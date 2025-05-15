@@ -1,0 +1,103 @@
+#+TITLE: Emacs Config
+
+* Melpa
+#+begin_src emacs-lisp
+  (require 'package)
+(add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/") t)
+;; Comment/uncomment this line to enable MELPA Stable if desired.  See `package-archive-priorities`
+;; and `package-pinned-packages`. Most users will not need or want to do this.
+;;(add-to-list 'package-archives '("melpa-stable" . "https://stable.melpa.org/packages/") t)
+(package-initialize)
+#+end_src
+
+
+* Packages
+:PROPERTIES:
+:header-args:emacs-lisp: :tangle "init.el" :results none
+:END:
+** Consult
+#+begin_src emacs-lisp :comments no
+    ;; -*- lexical-binding: t -*-
+#+end_src
+*** Keybindings
+#+begin_src emacs-lisp
+  (dolist (cmd '(("project-find-regexp" . consult-ripgrep)
+  	      ("switch-to-buffer" . consult-buffer)
+  	      ("switch-to-buffer" . consult-buffer)))
+  (keymap-set global-map (concat "<remap> <" (car cmd) ">") (cdr cmd)))
+#+end_src
+** Vertico
+Vertical Completion Engine
+#+begin_src emacs-lisp 
+  (use-package vertico
+  :custom
+  ;; (vertico-scroll-margin 0) ;; Different scroll margin
+  ;; (vertico-count 20) ;; Show more candidates
+  (vertico-resize t) ;; Grow and shrink the Vertico minibuffer
+  ;; (vertico-cycle t) ;; Enable cycling for `vertico-next/previous'
+  :init
+  (vertico-mode))
+#+end_src
+*** Case Insensitive
+  #+begin_src emacs-lisp
+  (setq read-file-name-completion-ignore-case t
+        read-buffer-completion-ignore-case t
+        completion-ignore-case t)
+  #+end_src
+*** Orderless
+#+begin_src emacs-lisp
+  (use-package orderless
+    :custom
+    ;; Configure a custom style dispatcher (see the Consult wiki)
+    ;; (orderless-style-dispatchers '(+orderless-consult-dispatch orderless-affix-dispatch))
+    ;; (orderless-component-separator #'orderless-escapable-split-on-space)
+    (completion-styles '(orderless basic))
+    (completion-category-defaults nil)
+    (completion-category-overrides '((file (styles partial-completion)))))
+#+end_src
+*** Persistent History
+Persist history over Emacs restarts. Vertico sorts by history position.
+#+begin_src emacs-lisp
+  (use-package savehist
+    :init
+    (savehist-mode))
+
+#+end_src
+
+*** Recursive Minibuffer
+#+begin_src emacs-lisp :tangle "init.el"
+  ;; Emacs minibuffer configurations.
+  (use-package emacs
+    :custom
+    ;; Support opening new minibuffers from inside existing minibuffers.
+    (enable-recursive-minibuffers t)
+    ;; Hide commands in M-x which do not work in the current mode.  Vertico
+    ;; commands are hidden in normal buffers. This setting is useful beyond
+    ;; Vertico.
+    (read-extended-command-predicate #'command-completion-default-include-p)
+    ;; Do not allow the cursor in the minibuffer prompt
+    (minibuffer-prompt-properties
+     '(read-only t cursor-intangible t face minibuffer-prompt)))
+#+end_src
+
+*** Completion at point/region
+#+begin_src emacs-lisp 
+(setq completion-in-region-function #'consult-completion-in-region)
+#+end_src
+
+** which-key
+#+begin_src emacs-lisp
+(which-key-mode)
+#+end_src
+
+** embrace
+#+begin_src emacs-lisp
+  (global-set-key (kbd "
+#+end_src
+
+** Org Mode
+Use karthink's Org patch for now for better Latex integration
+
+#+begin_src emacs-lisp
+  (use-package org :load-path "~/.emacs.d/elpa/org-mode/lisp/")
+#+end_src
