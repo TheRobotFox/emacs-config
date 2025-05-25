@@ -1,5 +1,5 @@
 #+TITLE: Emacs Config
-#+PROPERTY: header-args:emacs-lisp: :tangle "my-init.el" :results none
+: #+PROPERTY: header-args:emacs-lisp: :tangle "my-init.el" :results none
 
 * Basic Setup
 :PROPERTIES:
@@ -15,6 +15,7 @@
 (setq gc-cons-threshold (* 1024 1024 100))
 (setq custom-file "~/.config/emacs/custom.el")
 (load custom-file)
+(repeat-mode t)
 #+end_src
 * Package Management
 :PROPERTIES:
@@ -296,6 +297,44 @@ Autocompletion Interface
   (tabspaces-session-auto-restore t))
 #+end_src
 ** TODO Lookup Docs and Definition
+** Embark
+   #+begin_src emacs-lisp
+   (use-package embark
+     :ensure t
+
+     :bind
+     (("C-." . embark-act)         ;; pick some comfortable binding
+      ("C-;" . embark-dwim)        ;; good alternative: M-.
+      ("C-h B" . embark-bindings)) ;; alternative for `describe-bindings'
+
+  :init
+
+  ;; Optionally replace the key help with a completing-read interface
+  (setq prefix-help-command #'embark-prefix-help-command)
+
+  ;; Show the Embark target at point via Eldoc. You may adjust the
+  ;; Eldoc strategy, if you want to see the documentation from
+  ;; multiple providers. Beware that using this can be a little
+  ;; jarring since the message shown in the minibuffer can be more
+  ;; than one line, causing the modeline to move up and down:
+
+  ;; (add-hook 'eldoc-documentation-functions #'embark-eldoc-first-target)
+  ;; (setq eldoc-documentation-strategy #'eldoc-documentation-compose-eagerly)
+
+  :config
+
+  ;; Hide the mode line of the Embark live/completions buffers
+  (add-to-list 'display-buffer-alist
+               '("\\`\\*Embark Collect \\(Live\\|Completions\\)\\*"
+                 nil
+                 (window-parameters (mode-line-format . none)))))
+
+;; Consult users will also want the embark-consult package.
+(use-package embark-consult
+  :ensure t ; only need to install it, embark loads it after consult if found
+  :hook
+  (embark-collect-mode . consult-preview-at-point-mode))
+#+end_src
 ** Magit
    #+begin_src emacs-lisp
    (use-package magit)
@@ -328,15 +367,17 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
 ** Avy
 #+begin_src emacs-lisp
 (use-package avy
+  :ensure t
   :bind 
   ("M-g w" . avy-goto-word-0)
   ("M-g M-g" . avy-goto-line)
   ("C-M-j" . avy-goto-char-in-line)
   ("M-J" . avy-resume)
+  ("M-j" . avy-goto-char-timer)
   :custom
   (avy-background t)
   (avy-all-windows nil)			; Only Run in single Window (use C-u)
-  
+
   :config
   (avy-setup-default))
 #+end_src
@@ -344,8 +385,9 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
 - Avy isearch integration see [[https://karthinks.com/software/avy-can-do-anything/][Karthinks Blog]] about Avy
 
 #+begin_src emacs-lisp 
-
-  (define-key isearch-mode-map (kbd "M-j") 'avy-isearch))
+(use-package avy
+  :config
+  (define-key isearch-mode-map (kbd "M-j") 'avy-isearch)
   
 
       (defun isearch-forward-other-window (prefix)
@@ -369,7 +411,7 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
               (other-window (- next))))))
 
       (define-key global-map (kbd "C-M-s") 'isearch-forward-other-window)
-      (define-key global-map (kbd "C-M-r") 'isearch-backward-other-window)
+      (define-key global-map (kbd "C-M-r") 'isearch-backward-other-window))
 
 #+end_src
 ** LSP
@@ -445,7 +487,6 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
     (global-set-key (kbd "C-c m C") 'tsm/clear-overlays)
     (push 'tsm/mc/mark-all-overlays mc--default-cmds-to-run-once)
     :hook
-    (ts-movement-mode . repeat-mode)
     (bash-ts-mode . ts-movement-mode)
     (c++-ts-mode . ts-movement-mode)
     (c-ts-mode . ts-movement-mode)
@@ -495,6 +536,7 @@ Use karthink's Org patch for now for better Latex integration
 #+begin_src emacs-lisp
 (use-package org
   :defer
+  :ensure t
   :straight `(org
 	      :fork (:host nil
 			   :repo "https://git.tecosaur.net/tec/org-mode.git"
@@ -540,14 +582,39 @@ Use karthink's Org patch for now for better Latex integration
      
      )))
 #+end_src
+- item-to-heading ::
+  #+begin_src emacs-lisp
+  (use-package org
+    :config
+    (defun my/promote-item-at-point--render ()
+      "Render org-item as Headline"
+      (when-let* ((item (org-element-at-point))
+  		(level (or (org-element-property :level (org-element-lineage item 'headline)) 1))
+  		(title (org-element-property :tag item))
+  		(content-begin (org-element-contents-begin item))
+  		(content-end (org-element-contents-end item)))
+        (concat (s-repeat level "*") " " title "\n" (buffer-substring content-begin content-end))))
+    (defun my/promote-list ()
+      (interactive )
+      (let* ((list-struct (org-list-struct))
+  	   (list-begin (car (car list-struct)))
+  	   (list-end (car (last (car (last list-struct)))))
+  	   (res ""))
+        
+        (mapc (lambda (e) (when (= 0 (nth 1 e))
+  			  (goto-char (1+(car e)))
+  			  (setq res (concat res (my/promote-item-at-point--render))))) list-struct)
+        (delete-region list-begin list-end)
+        (goto-char list-begin)
+        (insert res))))
+  #+end_src
 
-***  Corfu inside elisp codeblocks 
-*** org roam
-#+begin_src emacs-lisp
+** org roam
+  #+begin_src emacs-lisp
   (use-package org-contrib)
-  (use-package org-eldoc)
-      (use-package org-roam
-       :custom
+    (use-package org-eldoc)
+    (use-package org-roam
+      :custom
       (org-roam-directory (file-truename "~/org/roam/"))
       :bind (("C-c n l" . org-roam-buffer-toggle)
              ("C-c n f" . org-roam-node-find)
@@ -557,40 +624,64 @@ Use karthink's Org patch for now for better Latex integration
              ;; Dailies
              ("C-c n j" . org-roam-dailies-capture-today))
       :config
-      ;; Stolen code from doom emacs
-      (cl-defmethod org-roam-node-doom-filetitle ((node org-roam-node))
-    "Return the value of \"#+title:\" (if any) from file that NODE resides in.
-  If there's no file-level title in the file, return empty string."
-    (or (if (= (org-roam-node-level node) 0)
-            (org-roam-node-title node)
-          (org-roam-node-file-title node))
-        ""))
-      (cl-defmethod org-roam-node-doom-hierarchy ((node org-roam-node))
-      "Return hierarchy for NODE, constructed of its file title, OLP and direct title.
-    If some elements are missing, they will be stripped out."
-      (let ((title     (org-roam-node-title node))
-            (olp       (org-roam-node-olp   node))
-            (level     (org-roam-node-level node))
-            (filetitle (org-roam-node-doom-filetitle node))
-            (separator (propertize org-eldoc-breadcrumb-separator 'face 'shadow)))
-        (cl-case level
-          ;; node is a top-level file
-          (0 filetitle)
-          ;; node is a level 1 heading
-          (1 (concat (propertize filetitle 'face '(shadow italic))
-                     separator title))
-          ;; node is a heading with an arbitrary outline path
-          (t (concat (propertize filetitle 'face '(shadow italic))
-                     separator (propertize (string-join olp separator) 'face '(shadow italic))
-                     separator title)))))
-      (setq org-roam-v2-ack t)
-      ;; If you're using a vertical completion framework, you might want a more informative completion interface
-      (setq org-roam-node-display-template (concat "${doom-hierarchy:*} " (propertize "${tags:15}" 'face 'org-tag)))
-      (org-roam-db-autosync-mode)
-      ;; If using org-roam-protocol
-      (require 'org-roam-protocol)
-      (require 'org-roam-export))
-#+end_src
+         (setq org-roam-v2-ack t)
+     (org-roam-db-autosync-mode)
+     (add-hook 'org-roam-buffer-postrender-functions
+  (lambda () (org-latex-preview--preview-region
+        org-latex-preview-process-default (point-min) (point-max)))) ; latex preview
+     ;; If using org-roam-protocol
+     (require 'org-roam-protocol)
+     (require 'org-roam-export))
+    	 #+end_src
+- Node-Hierachie-View ::
+   #+begin_src emacs-lisp
+(use-package org-roam
+   :config
+   ;; Stolen code from doom emacs
+   (cl-defmethod org-roam-node-doom-filetitle ((node org-roam-node))
+     "Return the value of \"#+title:\" (if any) from file that NODE resides in.
+   If there's no file-level title in the file, return empty string."
+     (or (if (= (org-roam-node-level node) 0)
+             (org-roam-node-title node)
+           (org-roam-node-file-title node))
+         ""))
+   (cl-defmethod org-roam-node-doom-hierarchy ((node org-roam-node))
+     "Return hierarchy for NODE, constructed of its file title, OLP and direct title.
+     If some elements are missing, they will be stripped out."
+     (let ((title     (org-roam-node-title node))
+           (olp       (org-roam-node-olp   node))
+           (level     (org-roam-node-level node))
+           (filetitle (org-roam-node-doom-filetitle node))
+           (separator (propertize org-eldoc-breadcrumb-separator 'face 'shadow)))
+       (cl-case level
+         ;; node is a top-level file
+         (0 filetitle)
+         ;; node is a level 1 heading
+         (1 (concat (propertize filetitle 'face '(shadow italic))
+                    separator title))
+         ;; node is a heading with an arbitrary outline path
+         (t (concat (propertize filetitle 'face '(shadow italic))
+                    separator (propertize (string-join olp separator) 'face '(shadow italic))
+                    separator title)))))
+   ;; If you're using a vertical completion framework, you might want a more informative completion interface
+   (setq org-roam-node-display-template (concat "${doom-hierarchy:*} " (propertize "${tags:15}" 'face 'org-tag))))
+   #+end_src
+- UI ::
+  #+begin_src emacs-lisp
+(use-package org-roam-ui
+  :straight
+    (:host github :repo "org-roam/org-roam-ui" :branch "main" :files ("*.el" "out"))
+    :after org-roam
+;;         normally we'd recommend hooking orui after org-roam, but since org-roam does not have
+;;         a hookable mode anymore, you're advised to pick something yourself
+;;         if you don't care about startup time, use
+;;  :hook (after-init . org-roam-ui-mode)
+    :config
+    (setq org-roam-ui-sync-theme t
+          org-roam-ui-follow t
+          org-roam-ui-update-on-save t
+          org-roam-ui-open-on-start t))
+  #+end_src
 *** COMMENT mathpix
     #+begin_src emacs-lisp
     (use-package mathpix.el
@@ -709,6 +800,7 @@ Use karthink's Org patch for now for better Latex integration
 
 (use-package org
   :hook (org-mode . variable-pitch-mode)
+  :ensure t
   :custom
   (org-highlight-latex-and-related '(latex script entities))
 
@@ -727,7 +819,7 @@ Use karthink's Org patch for now for better Latex integration
 
   (org-hide-emphasis-markers t)
   (org-ellipsis "…")
-    
+  
   ;; agenda
   (org-agenda-tags-column 0)
   
@@ -748,7 +840,7 @@ Use karthink's Org patch for now for better Latex integration
   (set-face-attribute 'org-block nil            :foreground nil :inherit
 		      'fixed-pitch :height 0.85)
   (set-face-attribute 'org-code nil             :inherit '(shadow fixed-pitch) :height 0.85)
-;;  (set-face-attribute 'org-indent nil           :inherit '(org-hide fixed-pitch) :height 0.85)
+  ;;  (set-face-attribute 'org-indent nil           :inherit '(org-hide fixed-pitch) :height 0.85)
   (set-face-attribute 'org-verbatim nil         :inherit '(shadow fixed-pitch) :height 0.85)
   (set-face-attribute 'org-special-keyword nil  :inherit '(font-lock-comment-face
 							   fixed-pitch))
@@ -767,9 +859,103 @@ Use karthink's Org patch for now for better Latex integration
     (set-face-attribute (car face) nil :font my/font-family-variable :weight 'bold :height (cdr face)))
   
   ;; Make the document title a bit bigger
-  (set-face-attribute 'org-drawer nil :height 0.9)
+  (set-face-attribute 'org-drawer nil :height 0.7)
   (set-face-attribute 'org-document-title nil :font my/font-family-variable :weight
-		      'bold :height 1.7))
+		      'bold :height 1.7)
+  
+  ;; Doom-Emacs-insert
+  (defun +org--insert-item (direction)
+    (let ((context (org-element-lineage
+                    (org-element-context)
+                    '(table table-row headline inlinetask item plain-list)
+                    t)))
+      (pcase (org-element-type context)
+	;; Add a new list item (carrying over checkboxes if necessary)
+	((or `item `plain-list)
+	 (let ((orig-point (point)))
+           ;; Position determines where org-insert-todo-heading and `org-insert-item'
+           ;; insert the new list item.
+           (if (eq direction 'above)
+               (org-beginning-of-item)
+             (end-of-line))
+           (let* ((ctx-item? (eq 'item (org-element-type context)))
+                  (ctx-cb (org-element-property :contents-begin context))
+                  ;; Hack to handle edge case where the point is at the
+                  ;; beginning of the first item
+                  (beginning-of-list? (and (not ctx-item?)
+                                           (= ctx-cb orig-point)))
+                  (item-context (if beginning-of-list?
+                                    (org-element-context)
+                                  context))
+                  ;; Horrible hack to handle edge case where the
+                  ;; line of the bullet is empty
+                  (ictx-cb (org-element-property :contents-begin item-context))
+                  (empty? (and (eq direction 'below)
+                               ;; in case contents-begin is nil, or contents-begin
+                               ;; equals the position end of the line, the item is
+                               ;; empty
+                               (or (not ictx-cb)
+                                   (= ictx-cb
+                                      (1+ (point))))))
+                  (pre-insert-point (point)))
+             ;; Insert dummy content, so that `org-insert-item'
+             ;; inserts content below this item
+             (when empty?
+               (insert " "))
+             (org-insert-item (org-element-property :checkbox context))
+             ;; Remove dummy content
+             (when empty?
+               (delete-region pre-insert-point (1+ pre-insert-point))))))
+	;; Add a new table row
+	((or `table `table-row)
+	 (pcase direction
+           ('below (org-table-next-row t))
+           ('above (org-table-insert-row)
+                   )))
+	
+	;; Otherwise, add a new heading, carrying over any todo state, if
+	;; necessary.
+	(_
+	 (let ((level (or (org-current-level) 1)))
+           ;; I intentionally avoid `org-insert-heading' and the like because they
+           ;; impose unpredictable whitespace rules depending on the cursor
+           ;; position. It's simpler to express this command's responsibility at a
+           ;; lower level than work around all the quirks in org's API.
+           (pcase direction
+             (`below
+              (let (org-insert-heading-respect-content)
+		(goto-char (line-end-position))
+		(org-end-of-subtree)
+		(insert "\n" (make-string level ?*) " ")))
+             (`above
+              (org-back-to-heading)
+              (insert (make-string level ?*) " ")
+              (save-excursion (insert "\n"))))
+           (run-hooks 'org-insert-heading-hook)
+           (when-let* ((todo-keyword (org-element-property :todo-keyword context))
+                       (todo-type    (org-element-property :todo-type context)))
+             (org-todo
+              (cond ((eq todo-type 'done)
+                     ;; Doesn't make sense to create more "DONE" headings
+                     )
+                    (todo-keyword)
+                    ('todo)))))))
+
+      (when (org-invisible-p)
+	(org-show-hidden-entry))
+      ))
+  (defun +org/insert-item-below (count)
+    "Inserts a new heading, table cell or item below the current one."
+    (interactive "p")
+    (dotimes (_ count) (+org--insert-item 'below)))
+
+  (defun +org/insert-item-above (count)
+    "Inserts a new heading, table cell or item above the current one."
+    (interactive "p")
+    (dotimes (_ count) (+org--insert-item 'above)))
+  
+  (define-key org-mode-map (kbd "C-<return>") #'+org/insert-item-below)
+  (define-key org-mode-map (kbd "C-S-<return>") #'+org/insert-item-above))
 #+end_src
 ** org-latex-previews
 #+begin_src emacs-lisp

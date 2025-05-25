@@ -10,7 +10,7 @@
      "6bdc4e5f585bb4a500ea38f563ecf126570b9ab3be0598bdf607034bb07a8875"
      default))
  '(org-agenda-files
-   '("~/.config/emacs/config.org" "/home/new/org/journal.org"
+   '("/home/new/.config/emacs/config.org" "/home/new/org/journal.org"
      "/home/new/org/notes.org" "/home/new/org/projects.org"
      "/home/new/org/todo.org" "/home/new/org/todos.org"
      "/home/new/org/roam/20231105230510-javascript.org"
@@ -18,8 +18,6 @@
      "/home/new/org/roam/20231106123635-c.org"
      "/home/new/org/roam/20231106124943-preprozessor.org"
      "/home/new/org/roam/20231106125522-memory_leaks.org"
-     "/home/new/org/roam/20231106142336-factorial.org"
-     "/home/new/org/roam/20231106144234-fibonacci.org"
      "/home/new/org/roam/20231107075846-binar_zahlen.org"
      "/home/new/org/roam/20231107100128-web.org"
      "/home/new/org/roam/20231107103033-funktionen.org"
@@ -104,8 +102,6 @@
      "/home/new/org/roam/20250506132203-zeta_funktion.org"
      "/home/new/org/roam/20250522193047-graph.org"
      "/home/new/org/roam/20250522194117-signaturen.org"
-     "/home/new/org/roam/20250522194438-morphismen.org"
-     "/home/new/org/roam/20250523182824-erwartungswert.org"
      "/home/new/org/roam/20250523185410-wahrscheinlichkeitsraum.org"
      "/home/new/org/roam/20250523192350-potenzmenge.org"))
  '(org-safe-remote-resources '("\\`https://fniessen\\.github\\.io\\(?:/\\|\\'\\)")))
