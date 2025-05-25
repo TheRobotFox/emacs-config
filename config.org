@@ -1,50 +1,92 @@
 #+TITLE: Emacs Config
+#+PROPERTY: header-args:emacs-lisp: :tangle "my-init.el" :results none
 
-* Melpa
+* Basic Setup
+:PROPERTIES:
+:header-args:emacs-lisp: :tangle "init.el" :results none
+:END:
 #+begin_src emacs-lisp
-  (require 'package)
-(add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/") t)
-;; Comment/uncomment this line to enable MELPA Stable if desired.  See `package-archive-priorities`
-;; and `package-pinned-packages`. Most users will not need or want to do this.
-;;(add-to-list 'package-archives '("melpa-stable" . "https://stable.melpa.org/packages/") t)
-(package-initialize)
+(setq inhibit-startup-screen t)
+(menu-bar-mode -1)
+(tool-bar-mode -1)
+(scroll-bar-mode -1)
+(global-visual-line-mode t)
+(setq gc-cons-threshold-original gc-cons-threshold)
+(setq gc-cons-threshold (* 1024 1024 100))
+(setq custom-file "~/.config/emacs/custom.el")
+(load custom-file)
+#+end_src
+* Package Management
+:PROPERTIES:
+:header-args:emacs-lisp: :tangle "init.el" :results none
+:END:
+** Straight
+*** Early Init
+#+begin_src emacs-lisp :tangle early-init.el
+  ;;; early-init.el --- Emacs early init file
+  ;;; Commentary:
+  ;; Code to run before init.el is loaded.
+  ;;; Code:
+
+  ;; Disable package.el
+  (setq package-enable-at-startup nil)
+
+  (provide 'early-init)
+  ;;; early-init.el ends here
+#+end_src
+*** Bootstrap
+#+begin_src emacs-lisp
+(defvar bootstrap-version)
+(let ((bootstrap-file
+       (expand-file-name
+        "straight/repos/straight.el/bootstrap.el"
+        (or (bound-and-true-p straight-base-dir)
+            user-emacs-directory)))
+      (bootstrap-version 7))
+  (unless (file-exists-p bootstrap-file)
+    (with-current-buffer
+        (url-retrieve-synchronously
+         "https://raw.githubusercontent.com/radian-software/straight.el/develop/install.el"
+         'silent 'inhibit-cookies)
+      (goto-char (point-max))
+      (eval-print-last-sexp)))
+  (load bootstrap-file nil 'nomessage))
+#+end_src
+*** Configuration
+- Allow Inheritance ::
+  When writing a recipie for known packages, the property-list is merged with defaults from the known recipie
+  #+begin_src emacs-lisp
+    (setq straight-allow-recipe-inheritance t)
+  #+end_src
+** use-package
+#+begin_src emacs-lisp
+  (straight-use-package 'use-package)
+#+end_src
+*** Use Straight as default
+#+begin_src emacs-lisp
+  (setq straight-use-package-by-default t)
+#+end_src
+** Diminish
+Hide or abbreviate minor modes from mode-line
+Integration with use-package for automatic hiding via =:diminish= and =:delight=
+#+begin_src emacs-lisp
+  (use-package diminish)
 #+end_src
 
-
-* Packages
+* Essentials
 :PROPERTIES:
 :header-args:emacs-lisp: :tangle "init.el" :results none
 :END:
 ** Consult
-#+begin_src emacs-lisp :comments no
-    ;; -*- lexical-binding: t -*-
-#+end_src
-*** Keybindings
-#+begin_src emacs-lisp
-  (dolist (cmd '(("project-find-regexp" . consult-ripgrep)
-  	      ("switch-to-buffer" . consult-buffer)
-  	      ("switch-to-buffer" . consult-buffer)))
-  (keymap-set global-map (concat "<remap> <" (car cmd) ">") (cdr cmd)))
-#+end_src
-** Vertico
-Vertical Completion Engine
 #+begin_src emacs-lisp 
-  (use-package vertico
-  :custom
-  ;; (vertico-scroll-margin 0) ;; Different scroll margin
-  ;; (vertico-count 20) ;; Show more candidates
-  (vertico-resize t) ;; Grow and shrink the Vertico minibuffer
-  ;; (vertico-cycle t) ;; Enable cycling for `vertico-next/previous'
-  :init
-  (vertico-mode))
+  ;; -*- lexical-binding: t -*-
+  (use-package consult
+    :bind (("C-x b" . consult-buffer)
+  	 ("M-y" . consult-yank-from-kill-ring)
+  	 ("C-x p g" . consult-ripgrep)))
 #+end_src
-*** Case Insensitive
-  #+begin_src emacs-lisp
-  (setq read-file-name-completion-ignore-case t
-        read-buffer-completion-ignore-case t
-        completion-ignore-case t)
-  #+end_src
-*** Orderless
+** Orderless
+Fuzzy Searching Support
 #+begin_src emacs-lisp
   (use-package orderless
     :custom
@@ -64,8 +106,8 @@ Persist history over Emacs restarts. Vertico sorts by history position.
 
 #+end_src
 
-*** Recursive Minibuffer
-#+begin_src emacs-lisp :tangle "init.el"
+*** TODO Recursive Minibuffer
+#+begin_src emacs-lisp 
   ;; Emacs minibuffer configurations.
   (use-package emacs
     :custom
@@ -85,19 +127,652 @@ Persist history over Emacs restarts. Vertico sorts by history position.
 (setq completion-in-region-function #'consult-completion-in-region)
 #+end_src
 
+** Vertico
+Vertical Completion Engine
+#+begin_src emacs-lisp 
+      (use-package vertico
+      :config
+#+end_src
+- Case Insensitive :: 
+  #+begin_src emacs-lisp
+  (setq read-file-name-completion-ignore-case t
+        read-buffer-completion-ignore-case t
+        completion-ignore-case t)
+  #+end_src
+#+begin_src emacs-lisp
+      :custom
+      ;; (vertico-scroll-margin 0) ;; Different scroll margin
+      ;; (vertico-count 20) ;; Show more candidates
+      (vertico-resize t) ;; Grow and shrink the Vertico minibuffer
+      ;; (vertico-cycle t) ;; Enable cycling for `vertico-next/previous'
+      :init
+      (vertico-mode))
+#+end_src
+
+** Marginalia
+#+begin_src emacs-lisp
+  (use-package marginalia
+    ;; Bind `marginalia-cycle' locally in the minibuffer.  To make the binding
+    ;; available in the *Completions* buffer, add it to the
+    ;; `completion-list-mode-map'.
+    :bind (:map minibuffer-local-map
+           ("M-A" . marginalia-cycle))
+
+    ;; The :init section is always executed.
+    :init
+
+    ;; Marginalia must be activated in the :init section of use-package such that
+    ;; the mode gets enabled right away. Note that this forces loading the
+    ;; package.
+    (marginalia-mode))
+#+end_src
+
 ** which-key
+
 #+begin_src emacs-lisp
-(which-key-mode)
+  (use-package which-key
+    :diminish
+    :custom
+    (which-key-idle-secondary-delay 0.3)
+   ;(which-key-dont-use-unicode t)
+    :config
+    (which-key-mode t))
+
 #+end_src
 
+** yasnippet
+#+begin_src emacs-lisp
+  (use-package yasnippet
+    :custom
+    yas-snippet-dirs '("~/.config/emacs/snippets")
+    :config
+    (yas-global-mode 1))
+  (use-package yasnippet-snippets
+    :after yasnippet)
+  (use-package yasnippet-capf
+  :after cape
+  :config
+  (add-to-list 'completion-at-point-functions #'yasnippet-capf))
+#+end_src
+
+** TODO Corfu
+Autocompletion Interface
+#+begin_src emacs-lisp
+    (use-package corfu
+    ;; Optional customizations
+    :custom
+    (corfu-auto t)
+    (corfu-cycle t)                ;; Enable cycling for `corfu-next/previous'
+    ;; (corfu-quit-at-boundary nil)   ;; Never quit at completion boundary
+    ;; (corfu-quit-no-match nil)      ;; Never quit, even if there is no match
+    ;; (corfu-preview-current nil)    ;; Disable current candidate preview
+    (corfu-preselect 'prompt)      ;; Preselect the prompt
+    (corfu-on-exact-match nil)     ;; Configure handling of exact matches
+
+    ;; Enable Corfu only for certain modes. See also `global-corfu-modes'.
+    ;; :hook ((prog-mode . corfu-mode)
+    ;;        (shell-mode . corfu-mode)
+    ;;        (eshell-mode . corfu-mode))
+
+    (corfu-popupinfo-delay '(0.5 . 1.0))	; Make PopuoInfo faster
+    :init
+
+    ;; Recommended: Enable Corfu globally.  Recommended since many modes provide
+    ;; Capfs and Dabbrev can be used globally (M-/).  See also the customization
+    ;; variable `global-corfu-modes' to exclude certain modes.
+    (global-corfu-mode)
+
+    ;; Enable optional extension modes:
+    (corfu-history-mode)
+    (corfu-popupinfo-mode))
+
+  ;; A few more useful configurations...
+  (use-package emacs
+     :custom
+    ;; TAB cycle if there are only few candidates
+    ;; (completion-cycle-threshold 3)
+
+    ;; Enable indentation+completion using the TAB key.
+    ;; `completion-at-point' is often bound to M-TAB.
+    (tab-always-indent 'complete)
+
+    ;; Emacs 30 and newer: Disable Ispell completion function.
+    ;; Try `cape-dict' as an alternative.
+    (text-mode-ispell-word-completion nil)
+
+    ;; Hide commands in M-x which do not apply to the current mode.  Corfu
+    ;; commands are hidden, since they are not used via M-x. This setting is
+    ;; useful beyond Corfu.
+    (read-extended-command-predicate #'command-completion-default-include-p))
+#+end_src
+*** Cape
+#+begin_src emacs-lisp
+    (use-package cape
+    ;; Bind prefix keymap providing all Cape commands under a mnemonic key.
+    ;; Press C-c p ? to for help.
+    :bind ("C-c p" . cape-prefix-map) ;; Alternative key: M-<tab>, M-p, M-+
+    ;; Alternatively bind Cape commands individually.
+    ;; :bind (("C-c p d" . cape-dabbrev)
+    ;;        ("C-c p h" . cape-history)
+    ;;        ("C-c p f" . cape-file)
+    ;;        ...)
+    :init
+    ;; Add to the global default value of `completion-at-point-functions' which is
+    ;; used by `completion-at-point'.  The order of the functions matters, the
+    ;; first function returning a result wins.  Note that the list of buffer-local
+    ;; completion functions takes precedence over the global list.
+    (add-hook 'completion-at-point-functions #'cape-dabbrev)
+    (add-hook 'completion-at-point-functions #'cape-file)
+    (add-hook 'completion-at-point-functions #'cape-elisp-block)
+    (add-hook 'completion-at-point-functions #'cape-elisp-symbol)
+    (add-hook 'completion-at-point-functions #'cape-history)
+    ;; ...
+  )
+#+end_src
+*** TODO multiple cursor fix
+** Treesitter-auto
+#+begin_src emacs-lisp
+(use-package treesit-auto
+  :config
+  (global-treesit-auto-mode))
+#+end_src
+** COMMENT tabspaces
+#+begin_src emacs-lisp
+(use-package tabspaces
+  ;; use this next line only if you also use straight, otherwise ignore it. 
+  :straight (:type git :host github :repo "mclear-tools/tabspaces")
+  :hook (after-init . tabspaces-mode) ;; use this only if you want the minor-mode loaded at startup. 
+  :commands (tabspaces-switch-or-create-workspace
+             tabspaces-open-or-create-project-and-workspace)
+  :custom
+  (tabspaces-use-filtered-buffers-as-default t)
+  (tabspaces-default-tab "Default")
+  (tabspaces-remove-to-default t)
+  ;;(tabspaces-include-buffers '("*scratch*"))
+  (tabspaces-initialize-project-with-todo t)
+  (tabspaces-todo-file-name "project-todo.org")
+  ;; sessions
+  (tabspaces-session t)
+  (tabspaces-session-auto-restore t))
+#+end_src
+** TODO Lookup Docs and Definition
+** Magit
+   #+begin_src emacs-lisp
+   (use-package magit)
+   #+end_src
+* Editing
+:PROPERTIES:
+:header-args:emacs-lisp: :tangle "init.el" :results none
+:END:
+** expand-region
+#+begin_src emacs-lisp
+  (use-package expand-region
+    :bind ("C-=" . er/expand-region))
+#+end_src
 ** embrace
+Edit Pattern enclosed text eg =(..)= or ="string"=
 #+begin_src emacs-lisp
-  (global-set-key (kbd "
+  (use-package embrace
+    :bind ("C-x e" . embrace-commander))
+#+end_src
+** Smartparens
+#+begin_src emacs-lisp
+  (use-package smartparens
+    :config
+    ;; load default config
+    (require 'smartparens-config)
+    (sp-use-smartparens-bindings)
+    (smartparens-global-mode 1))
+
+#+end_src
+** Avy
+#+begin_src emacs-lisp
+(use-package avy
+  :bind 
+  ("M-g w" . avy-goto-word-0)
+  ("M-g M-g" . avy-goto-line)
+  ("C-M-j" . avy-goto-char-in-line)
+  ("M-J" . avy-resume)
+  :custom
+  (avy-background t)
+  (avy-all-windows nil)			; Only Run in single Window (use C-u)
+  
+  :config
+  (avy-setup-default))
 #+end_src
 
-** Org Mode
+- Avy isearch integration see [[https://karthinks.com/software/avy-can-do-anything/][Karthinks Blog]] about Avy
+
+#+begin_src emacs-lisp 
+
+  (define-key isearch-mode-map (kbd "M-j") 'avy-isearch))
+  
+
+      (defun isearch-forward-other-window (prefix)
+          "Function to isearch-forward in other-window."
+          (interactive "P")
+          (unless (one-window-p)
+            (save-excursion
+              (let ((next (if prefix -1 1)))
+                (other-window next)
+                (isearch-forward)
+                (other-window (- next))))))
+
+      (defun isearch-backward-other-window (prefix)
+        "Function to isearch-backward in other-window."
+        (interactive "P")
+        (unless (one-window-p)
+          (save-excursion
+            (let ((next (if prefix 1 -1)))
+              (other-window next)
+              (isearch-backward)
+              (other-window (- next))))))
+
+      (define-key global-map (kbd "C-M-s") 'isearch-forward-other-window)
+      (define-key global-map (kbd "C-M-r") 'isearch-backward-other-window)
+
+#+end_src
+** LSP
+#+begin_src emacs-lisp
+  (use-package lsp-mode
+  :custom
+  (lsp-completion-provider :none) ;; we use Corfu!
+  :init
+  (defun my/lsp-mode-setup-completion ()
+    (setf (alist-get 'styles (alist-get 'lsp-capf completion-category-defaults))
+          '(orderless)) ;; Configure orderless
+    ;; Optionally configure the cape-capf-buster.
+    (setq-local completion-at-point-functions (list (cape-capf-buster #'lsp-completion-at-point))))
+
+  :hook
+  (lsp-completion-mode . my/lsp-mode-setup-completion))
+#+end_src
+** TS-movement
+#+begin_src emacs-lisp
+  (use-package ts-movement
+    :straight `(ts-movement :host nil
+  			  :repo "https://github.com/haritkapadia/ts-movement")
+    :ensure multiple-cursors
+    :config
+    (defun my/tsm/transpose (fn)
+      (if-let*
+  	((tsm/overlay (tsm/-find-overlay-at-point (point)))
+  	 (node (tsm/-get-node tsm/overlay))
+  	 (type (treesit-node-type node)))
+  	(progn
+  	  (my/tsm/-transpose node fn)
+  	  (tsm/-overlay-at-node
+  	   (treesit-parent-until
+  	    (treesit-node-on (point) (point)) type t)))
+        (let ((node (if (use-region-p)
+  		      (treesit-node-on (region-beginning) (region-end))
+  		    (treesit-node-on (point) (point)))))
+  	(my/tsm/-transpose node fn))))
+
+    (defun my/tsm/-transpose (node fn)
+      (when-let* ((type (treesit-node-type node))
+  	  (node-other (funcall fn node type)))
+        (transpose-regions
+         (treesit-node-start node) (treesit-node-end node)
+         (treesit-node-start node-other) (treesit-node-end node-other))))
+
+    (defun my/tsm/transpose-forward ()
+      (interactive)
+      (my/tsm/transpose 'treesit-node-next-sibling))
+    (defun my/tsm/transpose-backward ()
+      (interactive)
+      (my/tsm/transpose 'treesit-node-prev-sibling))
+
+    (defvar-keymap  tsm-repeat-map
+      :repeat (:enter () :exit (tsm/node-mark tsm/mc/mark-all-overlays))
+      "C-n" #'my/tsm/transpose-forward
+      "C-p" #'my/tsm/transpose-backward
+      "d" #'tsm/delete-overlay-at-point
+      "D" #'tsm/clear-overlays-of-type
+      "C-b" #'tsm/backward-overlay
+      "C-f" #'tsm/forward-overlay
+      "b" #'tsm/node-prev
+      "f" #'tsm/node-next
+      "p" #'tsm/node-parent
+      "n" #'tsm/node-child
+      "N" #'tsm/node-children
+      "s" #'tsm/node-children-of-type
+      "a" #'tsm/node-start
+      "e" #'tsm/node-end
+      "m" #'tsm/node-mark
+      "c" #'tsm/mc/mark-all-overlays)
+    (global-set-key (kbd "C-c m") tsm-repeat-map)
+    (global-set-key (kbd "C-c m C") 'tsm/clear-overlays)
+    (push 'tsm/mc/mark-all-overlays mc--default-cmds-to-run-once)
+    :hook
+    (ts-movement-mode . repeat-mode)
+    (bash-ts-mode . ts-movement-mode)
+    (c++-ts-mode . ts-movement-mode)
+    (c-ts-mode . ts-movement-mode)
+    (cmake-ts-mode . ts-movement-mode)
+    (csharp-ts-mode . ts-movement-mode)
+    (css-ts-mode . ts-movement-mode)
+    (dockerfile-ts-mode . ts-movement-mode)
+    (go-mod-ts-mode . ts-movement-mode)
+    (go-ts-mode . ts-movement-mode)
+    (java-ts-mode . ts-movement-mode)
+    (js-ts-mode . ts-movement-mode)
+    (json-ts-mode . ts-movement-mode)
+    (python-ts-mode . ts-movement-mode)
+    (ruby-ts-mode . ts-movement-mode)
+    (rust-ts-mode . ts-movement-mode)
+    (toml-ts-mode . ts-movement-mode)
+    (tsx-ts-mode . ts-movement-mode)
+    (typescript-ts-mode . ts-movement-mode)
+    (yaml-ts-mode . ts-movement-mode))
+#+end_src
+** multiple-cursors
+#+begin_src emacs-lisp
+  (use-package multiple-cursors
+    :config
+    (defvar-keymap mc-repeat-map
+      :repeat t
+      "n" #'mc/mark-next-like-this
+      "p" #'mc/mark-previous-like-this
+      "N" #'mc/skip-to-next-like-this
+      "P" #'mc/skip-to-previous-like-this)
+    (global-set-key (kbd"C-S-c") mc-repeat-map)
+    (define-key mc/keymap (kbd "<return>") nil)
+    (global-set-key (kbd "C-S-c C-S-c" ) 'mc/edit-lines)
+    (global-set-key (kbd "C-S-c a") 'mc/mark-all-symbols-like-this)
+    (global-set-key (kbd "C-S-c d" ) 'mc/mark-all-like-this-dwim)
+    (global-set-key (kbd "C-S-c e" ) 'mc/mark-more-like-this-extended))
+
+#+end_src
+* Languages
+:PROPERTIES:
+:header-args:emacs-lisp: :tangle "init.el" :results none
+:END:
+** org mode
+
 Use karthink's Org patch for now for better Latex integration
 
 #+begin_src emacs-lisp
-  (use-package org :load-path "~/.emacs.d/elpa/org-mode/lisp/")
+(use-package org
+  :defer
+  :straight `(org
+	      :fork (:host nil
+			   :repo "https://git.tecosaur.net/tec/org-mode.git"
+			   :branch "dev"
+			   :remote "tecosaur")
+              :files (:defaults "etc")
+              :build t
+              :pre-build
+              (with-temp-file "org-version.el"
+		(require 'lisp-mnt)
+		(let ((version
+                       (with-temp-buffer
+			 (insert-file-contents "lisp/org.el")
+			 (lm-header "version")))
+                      (git-version
+                       (string-trim
+			(with-temp-buffer
+			  (call-process "git" nil t nil "rev-parse" "--short" "HEAD")
+			  (buffer-string)))))
+		  (insert
+		   (format "(defun org-release () \"The release version of Org.\" %S)\n" version)
+		   (format "(defun org-git-version () \"The truncate git commit hash of Org mode.\" %S)\n" git-version)
+		   "(provide 'org-version)\n")))
+              :pin nil)
+  :bind
+  ("C-c n C" . org-capture)
+  :config
+  (defun org-directory-file (path)
+    (concat org-directory "/" path))
+  ()
+  :custom
+  (org-startup-with-latex-preview t)
+  (org-startup-folded 'content)
+  (org-default-notes-file (concat org-directory "/notes.org"))
+  (org-capture-templates
+   '(("t" "Todo" entry (file+headline "~/org/todos.org" "Todos")
+      "* TODO %?\n  %i\n  %a")
+     ("T" "Task" entry (file+headline "~/org/todos.org" "Tasks")
+      "* TODO %?\nDEADLINE: %^{deadline}t\n  %i\n")
+     ;; TODO DOOM LIKE    ("j" "Journal" entry (file (org-directory-file "journal.org")) "* %^{Title} %T\n%?")
+     ("p" "Project Idea" entry (file "~/org/ideas.org") "*  %^{Title} %t\n%?")
+     ("a" "Question" entry (file "~/org/questions.org") "* TODO %^{Question} %T\n%?")
+     
+     )))
+#+end_src
+
+***  Corfu inside elisp codeblocks 
+*** org roam
+#+begin_src emacs-lisp
+  (use-package org-contrib)
+  (use-package org-eldoc)
+      (use-package org-roam
+       :custom
+      (org-roam-directory (file-truename "~/org/roam/"))
+      :bind (("C-c n l" . org-roam-buffer-toggle)
+             ("C-c n f" . org-roam-node-find)
+             ("C-c n g" . org-roam-graph)
+             ("C-c n i" . org-roam-node-insert)
+             ("C-c n c" . org-roam-capture)
+             ;; Dailies
+             ("C-c n j" . org-roam-dailies-capture-today))
+      :config
+      ;; Stolen code from doom emacs
+      (cl-defmethod org-roam-node-doom-filetitle ((node org-roam-node))
+    "Return the value of \"#+title:\" (if any) from file that NODE resides in.
+  If there's no file-level title in the file, return empty string."
+    (or (if (= (org-roam-node-level node) 0)
+            (org-roam-node-title node)
+          (org-roam-node-file-title node))
+        ""))
+      (cl-defmethod org-roam-node-doom-hierarchy ((node org-roam-node))
+      "Return hierarchy for NODE, constructed of its file title, OLP and direct title.
+    If some elements are missing, they will be stripped out."
+      (let ((title     (org-roam-node-title node))
+            (olp       (org-roam-node-olp   node))
+            (level     (org-roam-node-level node))
+            (filetitle (org-roam-node-doom-filetitle node))
+            (separator (propertize org-eldoc-breadcrumb-separator 'face 'shadow)))
+        (cl-case level
+          ;; node is a top-level file
+          (0 filetitle)
+          ;; node is a level 1 heading
+          (1 (concat (propertize filetitle 'face '(shadow italic))
+                     separator title))
+          ;; node is a heading with an arbitrary outline path
+          (t (concat (propertize filetitle 'face '(shadow italic))
+                     separator (propertize (string-join olp separator) 'face '(shadow italic))
+                     separator title)))))
+      (setq org-roam-v2-ack t)
+      ;; If you're using a vertical completion framework, you might want a more informative completion interface
+      (setq org-roam-node-display-template (concat "${doom-hierarchy:*} " (propertize "${tags:15}" 'face 'org-tag)))
+      (org-roam-db-autosync-mode)
+      ;; If using org-roam-protocol
+      (require 'org-roam-protocol)
+      (require 'org-roam-export))
+#+end_src
+*** COMMENT mathpix
+    #+begin_src emacs-lisp
+    (use-package mathpix.el
+  :straight (:host github :repo "jethrokuan/mathpix.el")
+  :custom ((mathpix-app-id "app-id")
+           (mathpix-app-key "app-key"))
+  :bind
+  ("C-x m" . mathpix-screenshot))
+    #+end_src
+*** COMMENT deft
+    #+begin_src emacs-lisp
+    (use-package deft
+  :after org
+  :bind
+  ("C-c n d" . deft)
+  :custom
+  (deft-recursive t)
+  (deft-use-filter-string-for-filename t)
+  (deft-default-extension "org")
+  (deft-directory org-roam-directory))
+
+    #+end_src
+** C/C++
+#+begin_src emacs-lisp
+  
+#+end_src
+** Java
+   #+begin_src emacs-lisp
+   (use-package lsp-java)
+   #+end_src
+* Extra 
+:PROPERTIES:
+:header-args:emacs-lisp: :tangle "init.el" :results none
+:END:
+** PDF tools
+#+begin_src emacs-lisp
+  (use-package pdf-tools
+  :magic ("%PDF" . pdf-view-mode)
+  :config
+  (pdf-tools-install :no-query))
+#+end_src
+** Emacs Everywhere
+   #+begin_src emacs-lisp
+   (use-package emacs-everywhere
+     :defer t
+     :custom
+     (emacs-everywhere-app-info-function #'emacs-everywhere--app-info-linux-sway))
+   #+end_src
+* Bindings
+:PROPERTIES:
+:header-args:emacs-lisp: :tangle "init.el" :results none
+:END:
+#+begin_src emacs-lisp 
+  (use-package emacs
+    :bind ("C-x C-r" . recentf))
+#+end_src
+* Pretty
+:PROPERTIES:
+:header-args:emacs-lisp: :tangle "init.el" :results none
+:END:
+** Fonts
+#+begin_src emacs-lisp
+  (setq my/font-family-variable "Fira Sans"
+        my/font-family-fixed "Fira Code")
+  (add-to-list 'default-frame-alist (cons 'font (concat my/font-family-variable "-17")))
+
+#+end_src
+** Theme
+   #+begin_src emacs-lisp
+   (use-package color-theme-sanityinc-tomorrow
+     :ensure t
+     :config
+     (load-theme 'sanityinc-tomorrow-day))
+   #+end_src
+** Scrolling
+   #+begin_src emacs-lisp
+(pixel-scroll-precision-mode t)   
+   #+end_src
+** Zen
+   #+begin_src emacs-lisp
+   ;; (use-package writeroom-mode
+   ;;   :custom
+   ;;   (writeroom-width 80)
+   ;;     (writeroom-major-modes '(text-mode org-mode))
+   ;;     :config
+   ;;     (global-writeroom-mode))
+   (use-package olivetti
+     :hook
+     (org-mode . olivetti-mode)
+     (olivetti-mode . (lambda () (text-scale-set 1.8)))
+     :custom
+     (olivetti-body-width 80))
+   #+end_src
+** Org-mode
+- install org-modern
+- 
+#+begin_src emacs-lisp
+(use-package org-modern
+  :ensure t
+  :custom
+  (org-modern-hide-stars nil)		; adds extra indentation
+  (org-modern-table t)
+;;  (org-modern-list 
+;;   '(;; (?- . "-")
+;;     (?* . "•")
+;;     (?+ . "‣")))
+  :hook
+  (org-mode . org-modern-mode)
+  (org-agenda-finalize . org-modern-agenda))
+
+;; (use-package org-modern-indent
+;;   :straight (org-modern-indent :type git :host github :repo "jdtsmith/org-modern-indent")
+;;   :config ; add late to hook
+;; (set-face-attribute 'fixed-pitch nil :family "Hack" :height 1.0) ; or whatever font family
+;;   (add-hook 'org-mode-hook #'org-modern-indent-mode 90))
+
+(use-package org
+  :hook (org-mode . variable-pitch-mode)
+  :custom
+  (org-highlight-latex-and-related '(latex script entities))
+
+  ;; Better Headings
+  (org-adapt-indentation t)
+  (org-hide-leading-stars t)
+  ;; (org-startup-indented t)
+
+
+  ;; Tags
+  (org-align-tags nil)
+  (org-tags-column 0)
+
+  (org-special-ctrl-a/e t)
+  (org-insert-heading-respect-content t)
+
+  (org-hide-emphasis-markers t)
+  (org-ellipsis "…")
+    
+  ;; agenda
+  (org-agenda-tags-column 0)
+  
+  
+  ;; Display latex unicode symbols
+  (org-pretty-entities t)
+  (org-pretty-entities-include-sub-superscripts nil)
+  
+  ;; prettify src blocks
+  (org-src-fontify-natively t)
+  (org-src-tab-acts-natively t)
+  (org-edit-src-content-indentation 0)
+
+  :config
+  ;; fixed pitch fonts
+  
+  (set-face-attribute 'org-table nil :inherit 'fixed-pitch)
+  (set-face-attribute 'org-block nil            :foreground nil :inherit
+		      'fixed-pitch :height 0.85)
+  (set-face-attribute 'org-code nil             :inherit '(shadow fixed-pitch) :height 0.85)
+;;  (set-face-attribute 'org-indent nil           :inherit '(org-hide fixed-pitch) :height 0.85)
+  (set-face-attribute 'org-verbatim nil         :inherit '(shadow fixed-pitch) :height 0.85)
+  (set-face-attribute 'org-special-keyword nil  :inherit '(font-lock-comment-face
+							   fixed-pitch))
+  (set-face-attribute 'org-meta-line nil        :inherit '(font-lock-comment-face fixed-pitch))
+  (set-face-attribute 'org-checkbox nil         :inherit 'fixed-pitch)
+
+  ;; Headers
+  (dolist (face '((org-level-1 . 1.35)
+		  (org-level-2 . 1.3)
+		  (org-level-3 . 1.2)
+		  (org-level-4 . 1.1)
+		  (org-level-5 . 1.1)
+		  (org-level-6 . 1.1)
+		  (org-level-7 . 1.1)
+		  (org-level-8 . 1.1)))
+    (set-face-attribute (car face) nil :font my/font-family-variable :weight 'bold :height (cdr face)))
+  
+  ;; Make the document title a bit bigger
+  (set-face-attribute 'org-drawer nil :height 0.9)
+  (set-face-attribute 'org-document-title nil :font my/font-family-variable :weight
+		      'bold :height 1.7))
+#+end_src
+** org-latex-previews
+#+begin_src emacs-lisp
+(use-package org
+  :hook (org-mode . org-latex-preview-auto-mode))
 #+end_src
