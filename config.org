@@ -730,13 +730,20 @@ Use karthink's Org patch for now for better Latex integration
      :custom
      (emacs-everywhere-app-info-function #'emacs-everywhere--app-info-linux-sway))
    #+end_src
+* 
 * Bindings
 :PROPERTIES:
 :header-args:emacs-lisp: :tangle "init.el" :results none
 :END:
 #+begin_src emacs-lisp 
-  (use-package emacs
-    :bind ("C-x C-r" . recentf))
+(use-package emacs
+  :config
+  (defun my/open-config ()
+    (interactive)
+    (find-file "~/.config/emacs/config.org"))
+  :bind
+  ("C-x C-r" . recentf)
+  ("C-x S-c" . my/open-config))
 #+end_src
 * Pretty
 :PROPERTIES:
