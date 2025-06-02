@@ -10,7 +10,8 @@
      "6bdc4e5f585bb4a500ea38f563ecf126570b9ab3be0598bdf607034bb07a8875"
      default))
  '(org-agenda-files
-   '("/home/new/.config/emacs/config.org" "/home/new/org/journal.org"
+   '("~/.config/emacs/straight/repos/org-roam-he/Readme.org"
+     "/home/new/.config/emacs/config.org" "/home/new/org/journal.org"
      "/home/new/org/notes.org" "/home/new/org/projects.org"
      "/home/new/org/todo.org" "/home/new/org/todos.org"
      "/home/new/org/roam/20231105230510-javascript.org"

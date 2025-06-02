@@ -707,12 +707,15 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
 :END:
 ** Fonts
 #+begin_src emacs-lisp
-(setq my/font-family-variable "Fira Sans-17"
-      my/font-family-fixed "Fira Code-17")
-(set-face-font 'default my/font-family-fixed)
-(set-face-font 'variable-pitch my/font-family-variable)
-(add-to-list 'default-frame-alist (cons 'font my/font-family-fixed))
-;; (add-to-list 'default-frame-alist (cons 'font (concat my/font-family-fixed "-17")))
+(setq my/font-size 16)
+(setq my/font-family-variable "Fira Sans"
+      my/font-family-fixed "Fira Code")
+
+(let ((variable (concat my/font-family-variable "-" (number-to-string my/font-size)))
+      (fixed (concat my/font-family-fixed "-" (number-to-string my/font-size))))
+  (set-face-font 'default fixed)
+  (set-face-font 'variable-pitch variable)
+  (add-to-list 'default-frame-alist (cons 'font my/font-family-fixed)))
 #+end_src
 ** Theme
    #+begin_src emacs-lisp
@@ -725,7 +728,7 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
    #+begin_src emacs-lisp
      (use-package all-the-icons)
      (use-package all-the-icons-dired
-       :hook (dired-mode . all-the-icons-dired-mode)))
+       :hook (dired-mode . all-the-icons-dired-mode))
    #+end_src
 ** Ligatures
    Use ligature package with stolen doom-emacs ligature code
@@ -1113,32 +1116,63 @@ Use karthink's Org patch for now for better Latex integration
         (goto-char list-begin)
         (insert res))))
   #+end_src
+
+- org-todo-keywords ::
+  Add more expressive TODO keywords
+  #+begin_src emacs-lisp
+  (use-package org
+    :custom
+    (org-todo-keywords
+     '((sequence
+        "TODO(t)"
+        "WAIT(w@/!)"
+        "HOLD(h@/!/)"
+        "IDEA(i)"
+        "DISSOLVE(e)"
+        "|"
+        "DONE(d!)"
+        "KILL(k@/!)"))))
+  #+end_src
 ** org roam
   #+begin_src emacs-lisp
   (use-package org-contrib)
-    (use-package org-eldoc)
-    (use-package org-roam
-      :after org
-      :custom
-      (org-roam-directory (file-truename "~/org/roam/"))
-      :bind
-      ("C-c n l" . org-roam-buffer-toggle)
-      ("C-c n f" . org-roam-node-find)
-      ("C-c n g" . org-roam-graph)
-      ("C-c n i" . org-roam-node-insert)
-      ("C-c n c" . org-roam-capture)
+  (use-package org-eldoc)
+  (use-package org-roam-he
+    :straight (org-roam-he :type nil)
+    :load-path "straight/repos/org-roam-he/")
+  (use-package org-roam
+    :custom
+    (org-roam-directory (file-truename "~/org/roam/"))
+        
+    :config
+    (defvar-keymap org-node-map
+      "f" #'org-roam-node-find
+      "F" #'org-roam-he-find-oriented
+      
+      "i" #'org-roam-node-insert
+      "I" #'org-roam-he-insert
+
+      "r" #'org-roam-buffer-toggle
+      "u" #'org-roam-ui-open
+
+      ;;"C" #'org-roam-capture ;; redundent?
+      "C" #'org-id-get-create
+      "c" #'org-capture
+      "e" #'org-roam-extract-subtree
+      
       ;; Dailies
-      ("C-c n j" . org-roam-dailies-capture-today)
-      ("C-c n I" . org-id-get-create)
-      :config
-         (setq org-roam-v2-ack t)
-     (org-roam-db-autosync-mode)
-     (add-hook 'org-roam-buffer-postrender-functions
-  (lambda () (org-latex-preview--preview-region
-        org-latex-preview-process-default (point-min) (point-max)))) ; latex preview
-     ;; If using org-roam-protocol
-     (require 'org-roam-protocol)
-     (require 'org-roam-export))
+      "d" #'org-roam-dailies-capture-today)
+    
+    (setq org-roam-v2-ack t)
+    (org-roam-db-autosync-mode)
+    (add-hook 'org-roam-buffer-postrender-functions
+  	    (lambda () (org-latex-preview--preview-region
+  			org-latex-preview-process-default (point-min) (point-max)))) ; latex preview
+    ;; If using org-roam-protocol
+    (require 'org-roam-protocol)
+    (require 'org-roam-export)
+    :bind-keymap
+    ("C-c n" . org-node-map))
     	 #+end_src
 - Node-Hierachie-View ::
    #+begin_src emacs-lisp
@@ -1190,11 +1224,38 @@ Use karthink's Org patch for now for better Latex integration
               org-roam-ui-update-on-save t
               org-roam-ui-open-on-start t))
       #+end_src
-** Org-mode
+- Consult :: 
+#+begin_src emacs-lisp
+(use-package consult-org-roam
+   :ensure t
+   :after org-roam
+   :init
+   (require 'consult-org-roam)
+   ;; Activate the minor mode
+   (consult-org-roam-mode 1)
+   :custom
+   ;; Use `ripgrep' for searching with `consult-org-roam-search'
+   (consult-org-roam-grep-func #'consult-ripgrep)
+   ;; Configure a custom narrow key for `consult-buffer'
+   (consult-org-roam-buffer-narrow-key ?r)
+   ;; Display org-roam buffers right after non-org-roam buffers
+   ;; in consult-buffer (and not down at the bottom)
+   (consult-org-roam-buffer-after-buffers t)
+   :config
+   ;; Eventually suppress previewing for certain functions
+   (consult-customize
+    consult-org-roam-forward-links
+    :preview-key "M-.")
+   :config
+   (keymap-set org-node-map "b" #'consult-org-roam-backlinks)
+   (keymap-set org-node-map "B" #'consult-org-roam-backlinks-recusive)
+   (keymap-set org-node-map "l" #'consult-org-roam-forward-links)
+   (keymap-set org-node-map "g" #'consult-org-roam-search))
+#+end_src
+** Org-modern
     - install org-modern
     #+begin_src emacs-lisp
     (use-package org-modern
-
       :after org
       :custom
       (org-modern-hide-stars nil)		; adds extra indentation
