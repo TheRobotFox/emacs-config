@@ -1138,12 +1138,14 @@ Use karthink's Org patch for now for better Latex integration
   (use-package org-contrib)
   (use-package org-eldoc)
   (use-package org-roam-he
-    :straight (org-roam-he :type nil)
-    :load-path "straight/repos/org-roam-he/")
+    :straight
+    (:host github :repo "TheRobotFox/org-roam-hyperedge" :branch "main" :files ("*.el"))
+    ;;:load-path "straight/repos/org-roam-he/"
+    )
   (use-package org-roam
     :custom
     (org-roam-directory (file-truename "~/org/roam/"))
-        
+    
     :config
     (defvar-keymap org-node-map
       "f" #'org-roam-node-find
