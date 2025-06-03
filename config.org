@@ -81,55 +81,61 @@ Replace built-in navigation, search with consult actions
    #+begin_src emacs-lisp 
 
    (use-package consult
-     :bind (
-   	 ("C-c M-x" . consult-mode-command)
-   	 ("C-x C-k c" . consult-kmacro)
-   	 ("C-c k" . consult-man)
-   	 ("C-h I" . consult-info)
-   	 
-   	 ("C-x b" . consult-buffer)
-   	 ("C-x 4 b" . consult-buffer-other-window) ;; orig. switch-to-buffer-other-window
-   	 ("C-x 5 b" . consult-buffer-other-frame)  ;; orig. switch-to-buffer-other-frame
-   	 ("C-x t b" . consult-buffer-other-tab)    ;; orig. switch-to-buffer-other-tab
-            ("C-x r b" . consult-bookmark)            ;; orig. bookmark-jump
-            ("C-x p b" . consult-project-buffer)      ;; orig. project-switch-to-buffer
+     :config
+     (defvar-keymap goto-map
+       "M-g f" #'consult-flymake
+       "M-g g" #'smerge-start-session
+       "M-g e" #'consult-compile-error
+       "M-g l" #'consult-goto-line
+       "M-g i" #'consult-imenu
+       "M-g I" #'consult-imenu-multi
+       "M-g M" #'consult-global-mark
+       "M-g m" #'consult-mark)
+     :bind-keymap
+     ("M-g" . goto-map)
+     
+     :bind 
+     ("C-c M-x" . consult-mode-command)
+     ("C-x C-k c" . consult-kmacro)
+     ("C-c k" . consult-man)
+     ("C-h I" . consult-info)
+     
+     ("C-x b" . consult-buffer)
+     ("C-x 4 b" . consult-buffer-other-window) ;; orig. switch-to-buffer-other-window
+     ("C-x 5 b" . consult-buffer-other-frame)  ;; orig. switch-to-buffer-other-frame
+     ("C-x t b" . consult-buffer-other-tab)    ;; orig. switch-to-buffer-other-tab
+     ("C-x r b" . consult-bookmark)            ;; orig. bookmark-jump
+     ("C-x p b" . consult-project-buffer)      ;; orig. project-switch-to-buffer
 
-   	 ;; Custom M-# bindings for fast register access
-   	 ("M-#" . consult-register-load)
-            ("M-'" . consult-register-store)          ;; orig. abbrev-prefix-mark (unrelated)
-            ("C-M-#" . consult-register)
-    	 
-   	 ("M-y" . consult-yank-from-kill-ring)
-   	 ("C-x p g" . consult-ripgrep)
-   	 
-   	 ("C-x n l" . consult-focus-lines)
-   	 ("C-x n k" . consult-keep-lines)
-   	 ;;("M-g f" . consult-flymake)
-   	 ("M-g e" . consult-compile-error)
-   	 ("M-g g" . consult-goto-line)
-   	 ("M-g i" . consult-imenu)
-   	 ("M-g I" . consult-imenu-multi)
-   	 ("M-g M" . consult-global-mark)
-   	 ("M-g m" . consult-mark)
-   	 ("M-g c" . vc-find-conflicted-file)
-   	 
-   	 ;; M-s bindings in `search-map'
-   	 ("M-s f" . consult-fd)                  ;; Alternative: consult-fd
-   	 ("M-s c" . consult-locate)
-   	 ("M-s g" . consult-grep)
-   	 ("M-s G" . consult-git-grep)
-            ("M-s r" . consult-ripgrep)
-            ("M-s l" . consult-line)
-            ("M-s L" . consult-line-multi)
-            ("M-s k" . consult-keep-lines)
-            ("M-s u" . consult-focus-lines)
-    	 
-   	 ("M-s e" . consult-isearch-history)
-   	 :map isearch-mode-map
-   	 ("M-e" . consult-isearch-history)         ;; orig. isearch-edit-string
-   	 ("M-s e" . consult-isearch-history)       ;; orig. isearch-edit-string
-   	 ("M-s l" . consult-line)                  ;; needed by consult-line to detect isearch
-   	 ("M-s L" . consult-line-multi))
+     ;; Custom M-# bindings for fast register access
+     ("M-#" . consult-register-load)
+     ("M-'" . consult-register-store)          ;; orig. abbrev-prefix-mark (unrelated)
+     ("C-M-#" . consult-register)
+     
+     ("M-y" . consult-yank-from-kill-ring)
+     ("C-x p g" . consult-ripgrep)
+     
+     ("C-x n l" . consult-focus-lines)
+     ("C-x n k" . consult-keep-lines)
+     ("M-s g c" . vc-find-conflicted-file)
+     
+     ;; M-s bindings in `search-map'
+     ("M-s f" . consult-fd)                  ;; Alternative: consult-fd
+     ("M-s c" . consult-locate)
+     ;;("M-s g" . consult-grep)
+     ("M-s g g" . consult-git-grep)
+     ("M-s r" . consult-ripgrep)
+     ("M-s l" . consult-line)
+     ("M-s L" . consult-line-multi)
+     ("M-s k" . consult-keep-lines)
+     ("M-s u" . consult-focus-lines)
+     
+     ("M-s e" . consult-isearch-history)
+     :map isearch-mode-map
+     ("M-e" . consult-isearch-history)         ;; orig. isearch-edit-string
+     ("M-s e" . consult-isearch-history)       ;; orig. isearch-edit-string
+     ("M-s l" . consult-line)                  ;; needed by consult-line to detect isearch
+     ("M-s L" . consult-line-multi)
      :init
      ;; Tweak the register preview for `consult-register-load',
      ;; `consult-register-store' and the built-in commands.  This improves the
@@ -146,8 +152,8 @@ Replace built-in navigation, search with consult actions
 - LSP integration ::
   #+begin_src emacs-lisp
   (use-package consult-lsp
-    :bind
-    ("M-g s" . consult-lsp-symbols))
+    :config
+    (keymap-set 'goto-map "M-g s" . consult-lsp-symbols))
   #+end_src
 ** Flycheck
    #+begin_src emacs-lisp
@@ -299,7 +305,8 @@ Replace built-in navigation, search with consult actions
   #+begin_src emacs-lisp
     (use-package savehist
       :init
-      (savehist-mode))
+      ;;(savehist-mode)
+      )
 
   #+end_src
 *** COMMENT Company
@@ -455,11 +462,28 @@ Replace built-in navigation, search with consult actions
   :hook
   (embark-collect-mode . consult-preview-at-point-mode))
 #+end_src
-** Magit
+** Git
    #+begin_src emacs-lisp
    (use-package magit
      :bind
-     ("M-g G" . magit-find-file))
+     ("M-s g f" . magit-find-file)
+     :config
+     (defvar-keymap smerge-map
+       :repeat t
+       "n" #'smerge-next
+       "p" #'smerge-prev
+       "t" #'smerge-keep-upper
+       "b" #'smerge-keep-lower
+       "g" #'smerge-keep-all)
+     :hook
+     (smerge-mode
+      . (lambda ()
+          (global-set-key
+   	(kbd "M-g")
+   	(if (smerge-mode)
+   	    goto-map
+   	  smerge-map)))))
+
    #+end_src
 * Editing
 :PROPERTIES:
