@@ -107,6 +107,7 @@
      "/home/new/org/roam/20250522194117-signaturen.org"
      "/home/new/org/roam/20250523185410-wahrscheinlichkeitsraum.org"
      "/home/new/org/roam/20250523192350-potenzmenge.org"))
+ '(org-latex-preview-cache 'temp)
  '(org-safe-remote-resources '("\\`https://fniessen\\.github\\.io\\(?:/\\|\\'\\)")))
 (custom-set-faces
  ;; custom-set-faces was added by Custom.

@@ -9,16 +9,24 @@
 ** Emacs Setup
  
  #+begin_src emacs-lisp
- (setq inhibit-startup-screen t)
- (menu-bar-mode -1)
- (tool-bar-mode -1)
- (scroll-bar-mode -1)
- (global-visual-line-mode t)
- (setq gc-cons-threshold-original gc-cons-threshold)
- (setq gc-cons-threshold (* 1024 1024 100))
- (setq custom-file "~/.config/emacs/custom.el")
- (load custom-file)
- (repeat-mode t)
+  (setq inhibit-startup-screen t)
+  (menu-bar-mode -1)
+  (tool-bar-mode -1)
+  (scroll-bar-mode -1)
+  (global-visual-line-mode t)
+  (defun my-minibuffer-setup-hook ()
+   (setq gc-cons-threshold most-positive-fixnum))
+
+ (defun my-minibuffer-exit-hook ()
+   (setq gc-cons-threshold 800000))
+
+ (add-hook 'minibuffer-setup-hook #'my-minibuffer-setup-hook)
+ (add-hook 'minibuffer-exit-hook #'my-minibuffer-exit-hook)
+
+  ;; (setq gc-cons-threshold (* 1024 1024 100))
+  (setq custom-file "~/.config/emacs/custom.el")
+  (load custom-file)
+  (repeat-mode t)
  #+end_src
 ** Straight
 *** Early Init
@@ -423,7 +431,6 @@ Replace built-in navigation, search with consult actions
   (tabspaces-session t)
   (tabspaces-session-auto-restore t))
 #+end_src
-** TODO Lookup Docs and Definition
 ** Embark
    #+begin_src emacs-lisp
    (use-package embark
@@ -756,7 +763,7 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
    #+end_src
 ** Ligatures
    Use ligature package with stolen doom-emacs ligature code
-   #+begin_src emacs-lisp
+#+begin_src emacs-lisp
    (defvar +ligatures-extra-symbols
      '(;; org
    ;;     :name          "»"
@@ -801,13 +808,9 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
        :diff          "∖"
        :tuple         "⨂"
        :pipe          "" ;; FIXME: find a non-private char
-       :dot           "•")
-     "Maps identifiers to symbols, recognized by `set-ligatures'.
-
-   This should not contain any symbols from the Unicode Private Area! There is no
-   universal way of getting the correct symbol as that area varies from font to
-   font.")
-   #+end_src
+       :dot           "•"))
+     ;; "Maps identifiers to symbols, recognized by `set-ligatures'.
+ #+end_src
 - Fancy Vars :: 
 #+begin_src emacs-lisp
 (defvar my/fancy-vars
@@ -1273,6 +1276,10 @@ Use karthink's Org patch for now for better Latex integration
     consult-org-roam-forward-links
     :preview-key "M-.")
    :config
+   (add-to-list 'consult-preview-allowed-hooks 'global-org-modern-mode)
+   (add-to-list 'consult-preview-allowed-hooks 'global-hl-todo-mode)
+   (add-to-list 'consult-preview-allowed-hooks 'olivetti-mode)
+   (add-to-list 'consult-preview-allowed-hooks 'variable-pitch-mode)
    (keymap-set org-node-map "b" #'consult-org-roam-backlinks)
    (keymap-set org-node-map "B" #'consult-org-roam-backlinks-recusive)
    (keymap-set org-node-map "l" #'consult-org-roam-forward-links)
@@ -1291,10 +1298,11 @@ Use karthink's Org patch for now for better Latex integration
     ;;     (?* . "•")
     ;;     (?+ . "‣")))
       :hook
-      (org-mode . org-modern-mode)
+      ;;(org-mode . org-modern-mode)
       (org-agenda-finalize . org-modern-agenda)
       :config
       (set-face-attribute 'org-modern-block-name nil :slant 'italic))
+    (global-org-modern-mode 1)
 
     ;; (use-package org-modern-indent
     ;;   :straight (org-modern-indent :type git :host github :repo "jdtsmith/org-modern-indent")
@@ -1489,26 +1497,6 @@ Use karthink's Org patch for now for better Latex integration
 ** Theme
 - install org-modern
 #+begin_src emacs-lisp
-(use-package org-modern
-
-  :after org
-  :custom
-  (org-modern-hide-stars nil)		; adds extra indentation
-  (org-modern-table t)
-;;  (org-modern-list 
-;;   '(;; (?- . "-")
-;;     (?* . "•")
-;;     (?+ . "‣")))
-  :hook
-  (org-mode . org-modern-mode)
-  (org-agenda-finalize . org-modern-agenda))
-
-;; (use-package org-modern-indent
-;;   :straight (org-modern-indent :type git :host github :repo "jdtsmith/org-modern-indent")
-;;   :config ; add late to hook
-;; (set-face-attribute 'fixed-pitch nil :family "Hack" :height 1.0) ; or whatever font family
-;;   (add-hook 'org-mode-hook #'org-modern-indent-mode 90))
-
 (use-package emacs
   :after org
   :hook (org-mode . variable-pitch-mode)
@@ -1801,8 +1789,7 @@ Use karthink's Org patch for now for better Latex integration
   ;;   (flymake-flycheck-diagnostic-function-for 'haskell-hlint))
   ;; (add-to-list 'flymake-diagnostic-functions 'flymake-hlint)
   ;; flycheck backend deprecated October 2022
-  (flycheck-add-next-checker 'haskell-dante '(info . haskell-hlint))
-  )
+  (flycheck-add-next-checker 'haskell-dante '(info . haskell-hlint)))
   #+end_src
 - Consult Hoogle ::
   #+begin_src emacs-lisp
