@@ -9,13 +9,14 @@
 ** Emacs Setup
  
  #+begin_src emacs-lisp
-  (setq inhibit-startup-screen t)
-  (menu-bar-mode -1)
-  (tool-bar-mode -1)
-  (scroll-bar-mode -1)
-  (global-visual-line-mode t)
-  ;; (defun my-minibuffer-setup-hook ()
-  ;;  (setq gc-cons-threshold most-positive-fixnum))
+ (setq inhibit-startup-screen t)
+ (menu-bar-mode -1)
+ (tool-bar-mode -1)
+ (scroll-bar-mode -1)
+ (global-visual-line-mode t)
+
+ ;; (defun my-minibuffer-setup-hook ()
+ ;;  (setq gc-cons-threshold most-positive-fixnum))
 
  ;; (defun my-minibuffer-exit-hook ()
  ;;   (setq gc-cons-threshold 800000))
@@ -23,11 +24,11 @@
  ;; (add-hook 'minibuffer-setup-hook #'my-minibuffer-setup-hook)
  ;; (add-hook 'minibuffer-exit-hook #'my-minibuffer-exit-hook)
 
-  (setq gc-cons-threshold (* 1024 1024 200))
+ (setq gc-cons-threshold (* 1024 1024 200))
  (setq read-process-output-max (* 1024 1024))
-  (setq custom-file "~/.config/emacs/custom.el")
-  (load custom-file)
-  (repeat-mode t)
+ (setq custom-file "~/.config/emacs/custom.el")
+ (load custom-file)
+ (repeat-mode t)
  #+end_src
 ** Straight
 *** Early Init
@@ -85,6 +86,20 @@ Integration with use-package for automatic hiding via =:diminish= and =:delight=
 :PROPERTIES:
 :header-args:emacs-lisp: :tangle "init.el" :results none
 :END:
+** Persistence
+    Persist shell history and recent files across emacs restarts
+   #+begin_src emacs-lisp
+     (use-package savehist
+       :config
+       (setq history-length 100)
+   (put 'minibuffer-history 'history-length 50)
+   (put 'evil-ex-history 'history-length 50)
+   (put 'kill-ring 'history-length 100)
+       (savehist-mode 1)
+       )
+
+   #+end_src
+
 ** Consult :lsp:
 Replace built-in navigation, search with consult actions
    #+begin_src emacs-lisp 
@@ -95,7 +110,6 @@ Replace built-in navigation, search with consult actions
         ("C-c k" . consult-man)
         ("C-h I" . consult-info)
         
-        ("C-x b" . consult-buffer)
         ("C-x 4 b" . consult-buffer-other-window) ;; orig. switch-to-buffer-other-window
         ("C-x 5 b" . consult-buffer-other-frame)  ;; orig. switch-to-buffer-other-frame
         ("C-x t b" . consult-buffer-other-tab)    ;; orig. switch-to-buffer-other-tab
@@ -127,6 +141,8 @@ Replace built-in navigation, search with consult actions
        
        ;; M-s bindings in `search-map'
        ("M-s f" . consult-fd)                  ;; Alternative: consult-fd
+   	("M-s b" . consult-buffer)
+
        ("M-s c" . consult-locate)
        ;;("M-s g" . consult-grep)
        ("M-s g g" . consult-git-grep)
@@ -200,41 +216,41 @@ Replace built-in navigation, search with consult actions
 *** TODO Corfu
  Autocompletion Interface
  #+begin_src emacs-lisp
-     (use-package corfu
-     ;; Optional customizations
-     :custom
-     (corfu-auto t)
-     (corfu-cycle t)                ;; Enable cycling for `corfu-next/previous'
-     ;; (corfu-quit-at-boundary nil)   ;; Never quit at completion boundary
-     (corfu-quit-no-match 'seperator)      ;; Never quit, even if there is no match
-     ;; (corfu-preview-current nil)    ;; Disable current candidate preview
-     (corfu-preselect 'prompt)      ;; Preselect the prompt
-     (corfu-on-exact-match nil)     ;; Configure handling of exact matches
+   (use-package corfu
+   ;; Optional customizations
+   :custom
+   (corfu-auto t)
+   (corfu-cycle t)                ;; Enable cycling for `corfu-next/previous'
+   ;; (corfu-quit-at-boundary nil)   ;; Never quit at completion boundary
+   (corfu-quit-no-match 'separator)      ;; Never quit, even if there is no match
+   ;; (corfu-preview-current nil)    ;; Disable current candidate preview
+   (corfu-preselect 'prompt)      ;; Preselect the prompt
+   (corfu-on-exact-match nil)     ;; Configure handling of exact matches
 
-     (corfu-popupinfo-delay '(1.0 . 2.0))	; Make PopuoInfo faster
-     :init
+   (corfu-popupinfo-delay '(0.5 . 1.0))	; Make PopuoInfo faster
+   :init
 
-     ;; Recommended: Enable Corfu globally.  Recommended since many modes provide
-     ;; Capfs and Dabbrev can be used globally (M-/).  See also the customization
-     ;; variable `global-corfu-modes' to exclude certain modes.
-     (global-corfu-mode)
+   ;; Recommended: Enable Corfu globally.  Recommended since many modes provide
+   ;; Capfs and Dabbrev can be used globally (M-/).  See also the customization
+   ;; variable `global-corfu-modes' to exclude certain modes.
+   (global-corfu-mode)
 
-     ;; Enable optional extension modes:
-     (corfu-history-mode)
-     (corfu-popupinfo-mode))
+   ;; Enable optional extension modes:
+   (corfu-history-mode)
+   (corfu-popupinfo-mode))
 
-   ;; A few more useful configurations...
-   (use-package emacs
-      :custom
-   
-     ;; Emacs 30 and newer: Disable Ispell completion function.
-     ;; Try `cape-dict' as an alternative.
-     (text-mode-ispell-word-completion nil)
+ ;; A few more useful configurations...
+ (use-package emacs
+    :custom
 
-     ;; Hide commands in M-x which do not apply to the current mode.  Corfu
-     ;; commands are hidden, since they are not used via M-x. This setting is
-     ;; useful beyond Corfu.
-     (read-extended-command-predicate #'command-completion-default-include-p))
+   ;; Emacs 30 and newer: Disable Ispell completion function.
+   ;; Try `cape-dict' as an alternative.
+   (text-mode-ispell-word-completion nil)
+
+   ;; Hide commands in M-x which do not apply to the current mode.  Corfu
+   ;; commands are hidden, since they are not used via M-x. This setting is
+   ;; useful beyond Corfu.
+   (read-extended-command-predicate #'command-completion-default-include-p))
  #+end_src
 **** Cape
  #+begin_src emacs-lisp
@@ -294,19 +310,6 @@ Replace built-in navigation, search with consult actions
        )
 
      #+end_src
-*** Savehist
-   Persist shell history across emacs restarts
-  #+begin_src emacs-lisp
-    (use-package savehist
-      :config
-      (setq history-length 100)
-  (put 'minibuffer-history 'history-length 50)
-  (put 'evil-ex-history 'history-length 50)
-  (put 'kill-ring 'history-length 100)
-      (savehist-mode 1)
-      )
-
-  #+end_src
 *** COMMENT Company
     #+begin_src emacs-lisp
     (use-package company
@@ -586,7 +589,7 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
   :custom
   (lsp-completion-provider :none) ;; we use Corfu!
   (lsp-headerline-breadcrumb-enable nil)
-  (lsp-enable-indentation nil) ;; use treesit
+  (lsp-enable-indentation nil) ;; use it
   :after lsp-ui
   :init
    (defun my/lsp-mode-setup-completion ()
@@ -622,84 +625,6 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
    (use-package lsp-treemacs
      :functions treemacs-define-doubleclick-action)
   #+end_src
-** TS-movement
-#+begin_src emacs-lisp
-  (use-package ts-movement
-    :straight `(ts-movement :host nil
-  			  :repo "https://github.com/haritkapadia/ts-movement")
-    :ensure multiple-cursors
-    :config
-    (defun my/tsm/transpose (fn)
-      (if-let*
-  	((tsm/overlay (tsm/-find-overlay-at-point (point)))
-  	 (node (tsm/-get-node tsm/overlay))
-  	 (type (treesit-node-type node)))
-  	(progn
-  	  (my/tsm/-transpose node fn)
-  	  (tsm/-overlay-at-node
-  	   (treesit-parent-until
-  	    (treesit-node-on (point) (point)) type t)))
-        (let ((node (if (use-region-p)
-  		      (treesit-node-on (region-beginning) (region-end))
-  		    (treesit-node-on (point) (point)))))
-  	(my/tsm/-transpose node fn))))
-
-    (defun my/tsm/-transpose (node fn)
-      (when-let* ((type (treesit-node-type node))
-  	  (node-other (funcall fn node type)))
-        (transpose-regions
-         (treesit-node-start node) (treesit-node-end node)
-         (treesit-node-start node-other) (treesit-node-end node-other))))
-
-    (defun my/tsm/transpose-forward ()
-      (interactive)
-      (my/tsm/transpose 'treesit-node-next-sibling))
-    (defun my/tsm/transpose-backward ()
-      (interactive)
-      (my/tsm/transpose 'treesit-node-prev-sibling))
-
-    (defvar-keymap  tsm-repeat-map
-      :repeat (:enter () :exit (tsm/node-mark tsm/mc/mark-all-overlays))
-      "C-n" #'my/tsm/transpose-forward
-      "C-p" #'my/tsm/transpose-backward
-      "d" #'tsm/delete-overlay-at-point
-      "D" #'tsm/clear-overlays-of-type
-      "C-b" #'tsm/backward-overlay
-      "C-f" #'tsm/forward-overlay
-      "b" #'tsm/node-prev
-      "f" #'tsm/node-next
-      "p" #'tsm/node-parent
-      "n" #'tsm/node-child
-      "N" #'tsm/node-children
-      "s" #'tsm/node-children-of-type
-      "a" #'tsm/node-start
-      "e" #'tsm/node-end
-      "m" #'tsm/node-mark
-      "c" #'tsm/mc/mark-all-overlays)
-    (global-set-key (kbd "C-c m") tsm-repeat-map)
-    (global-set-key (kbd "C-c m C") 'tsm/clear-overlays)
-    (push 'tsm/mc/mark-all-overlays mc--default-cmds-to-run-once)
-    :hook
-    (bash-ts-mode . ts-movement-mode)
-    (c++-ts-mode . ts-movement-mode)
-    (c-ts-mode . ts-movement-mode)
-    (cmake-ts-mode . ts-movement-mode)
-    (csharp-ts-mode . ts-movement-mode)
-    (css-ts-mode . ts-movement-mode)
-    (dockerfile-ts-mode . ts-movement-mode)
-    (go-mod-ts-mode . ts-movement-mode)
-    (go-ts-mode . ts-movement-mode)
-    (java-ts-mode . ts-movement-mode)
-    (js-ts-mode . ts-movement-mode)
-    (json-ts-mode . ts-movement-mode)
-    (python-ts-mode . ts-movement-mode)
-    (ruby-ts-mode . ts-movement-mode)
-    (rust-ts-mode . ts-movement-mode)
-    (toml-ts-mode . ts-movement-mode)
-    (tsx-ts-mode . ts-movement-mode)
-    (typescript-ts-mode . ts-movement-mode)
-    (yaml-ts-mode . ts-movement-mode))
-#+end_src
 ** multiple-cursors
 #+begin_src emacs-lisp
   (use-package multiple-cursors
@@ -718,6 +643,78 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
     (global-set-key (kbd "C-S-c e" ) 'mc/mark-more-like-this-extended))
 
 #+end_src
+
+** Treesitter
+   #+begin_src emacs-lisp
+   (defun my/enable-treesit-extras ()
+     (setq tab-width 4
+   			  tab-always-indent nil)
+   	    (when (fboundp 'treesit-indent-region)
+   	      (setq indent-region-function
+   		    (lambda (START END)
+   			  (treesit-indent-region START END)
+   		      (tabify START END))))
+   		(ts-movement-mode 1)
+     )
+   #+end_src
+*** TS-movement
+ #+begin_src emacs-lisp
+ (use-package ts-movement
+   :straight `(ts-movement :host nil
+					   :repo "https://github.com/haritkapadia/ts-movement")
+   :ensure multiple-cursors
+   :config
+   (defun my/tsm/transpose (fn)
+     (if-let*
+		 ((tsm/overlay (tsm/-find-overlay-at-point (point)))
+		  (node (tsm/-get-node tsm/overlay))
+		  (type (treesit-node-type node)))
+		 (progn
+		   (my/tsm/-transpose node fn)
+		   (tsm/-overlay-at-node
+		    (treesit-parent-until
+	         (treesit-node-on (point) (point)) type t)))
+       (let ((node (if (use-region-p)
+			       (treesit-node-on (region-beginning) (region-end))
+			     (treesit-node-on (point) (point)))))
+		 (my/tsm/-transpose node fn))))
+
+   (defun my/tsm/-transpose (node fn)
+     (when-let* ((type (treesit-node-type node))
+		   (node-other (funcall fn node type)))
+       (transpose-regions
+	(treesit-node-start node) (treesit-node-end node)
+	(treesit-node-start node-other) (treesit-node-end node-other))))
+
+   (defun my/tsm/transpose-forward ()
+     (interactive)
+     (my/tsm/transpose 'treesit-node-next-sibling))
+   (defun my/tsm/transpose-backward ()
+     (interactive)
+     (my/tsm/transpose 'treesit-node-prev-sibling))
+
+   (defvar-keymap  tsm-repeat-map
+     :repeat (:enter () :exit (tsm/node-mark tsm/mc/mark-all-overlays))
+     "C-n" #'my/tsm/transpose-forward
+     "C-p" #'my/tsm/transpose-backward
+     "d" #'tsm/delete-overlay-at-point
+     "D" #'tsm/clear-overlays-of-type
+     "C-b" #'tsm/backward-overlay
+     "C-f" #'tsm/forward-overlay
+     "b" #'tsm/node-prev
+     "f" #'tsm/node-next
+     "p" #'tsm/node-parent
+     "n" #'tsm/node-child
+     "N" #'tsm/node-children
+     "s" #'tsm/node-children-of-type
+     "a" #'tsm/node-start
+     "e" #'tsm/node-end
+     "m" #'tsm/node-mark
+     "c" #'tsm/mc/mark-all-overlays)
+   (global-set-key (kbd "C-c m") tsm-repeat-map)
+   (global-set-key (kbd "C-c m C") 'tsm/clear-overlays)
+   (push 'tsm/mc/mark-all-overlays mc--default-cmds-to-run-once))
+ #+end_src
 * Extra 
 :PROPERTIES:
 :header-args:emacs-lisp: :tangle "init.el" :results none
@@ -744,7 +741,7 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
 #+begin_src emacs-lisp
 (setq my/font-size 16)
 (setq my/font-family-variable "Fira Sans"
-      my/font-family-fixed "Fira Code")
+      my/font-family-fixed "Fira Code hs")
 
 (let ((variable (concat my/font-family-variable "-" (number-to-string my/font-size)))
       (fixed (concat my/font-family-fixed "-" (number-to-string my/font-size))))
@@ -768,52 +765,54 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
 ** Ligatures
    Use ligature package with stolen doom-emacs ligature code
 #+begin_src emacs-lisp
-   (defvar +ligatures-extra-symbols
-     '(;; org
-   ;;     :name          "»"
-   ;;     :src_block     "»"
-   ;;     :src_block_end "«"
-   ;;     :quote         "“"
-   ;;     :quote_end     "”"
+(defvar +ligatures-extra-symbols
+  '(;; org
+;;     :name          "»"
+;;     :src_block     "»"
+;;     :src_block_end "«"
+;;     :quote         "“"
+;;     :quote_end     "”"
+    
+    ;; Functional
+    :lambda        "λ"
+    :def           "ƒ"
+    :composition   "○"
+    :map           "↦"
+    :to            "→"
+    :from          "←"
+    
+    ;; Types
+    :null          "∅"
+    :true          "⊤"
+    :false         "⊥"
+    :int           "ℤ"
+    :float         "ℝ"
+    :str           "𝕊"
+    :bool          "𝔹"
+    :list          "𝕃"
+    
+    ;; Flow
+    :not           "￢"
+    :in            "∈"
+    :not-in        "∉"
+    :and           "∧"
+    :or            "∨"
+    :for           "∀"
+    :some          "∃"
+    :return        "⟼"
+    :yield         "⟻"
        
-       ;; Functional
-       :lambda        "λ"
-       :def           "ƒ"
-       :composition   "○"
-       :map           "↦"
-       
-       ;; Types
-       :null          "∅"
-       :true          "⊤"
-       :false         "⊥"
-       :int           "ℤ"
-       :float         "ℝ"
-       :str           "𝕊"
-       :bool          "𝔹"
-       :list          "𝕃"
-       
-       ;; Flow
-       :not           "￢"
-       :in            "∈"
-       :not-in        "∉"
-       :and           "∧"
-       :or            "∨"
-       :for           "∀"
-       :some          "∃"
-       :return        "⟼"
-       :yield         "⟻"
-          
-       ;; Other
-       :sqrt          "√"
-       :infinity      "∞"
-       :uint          "ℕ"
-       :union         "⋃"
-       :intersect     "∩"
-       :diff          "∖"
-       :tuple         "⨂"
-       :pipe          "" ;; FIXME: find a non-private char
-       :dot           "•"))
-     ;; "Maps identifiers to symbols, recognized by `set-ligatures'.
+    ;; Other
+    :sqrt          "√"
+    :infinity      "∞"
+    :uint          "ℕ"
+    :union         "⋃"
+    :intersect     "∩"
+    :diff          "∖"
+    :tuple         "⨂"
+    :pipe          "" ;; FIXME: find a non-private char
+    :dot           "•"))
+  ;; "Maps identifiers to symbols, recognized by `set-ligatures'.
  #+end_src
 - Fancy Vars :: 
 #+begin_src emacs-lisp
@@ -970,63 +969,16 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
      (ligature-set-ligatures 'eww-mode '("ff" "fi" "ffi"))
      ;; Enable all Cascadia and Fira Code ligatures in programming modes
      (ligature-set-ligatures 'prog-mode
-                           '(;; == === ==== => =| =>>=>=|=>==>> ==< =/=//=// =~
-                             ;; =:= =!=
-                             ("=" (rx (+ (or ">" "<" "|" "/" "~" ":" "!" "="))))
-                             ;; ;; ;;;
-                             (";" (rx (+ ";")))
-                             ;; && &&&
-                             ("&" (rx (+ "&")))
-                             ;; !! !!! !. !: !!. != !== !~
-                             ("!" (rx (+ (or "=" "!" "\." ":" "~"))))
-                             ;; ?? ??? ?:  ?=  ?.
-                             ("?" (rx (or ":" "=" "\." (+ "?"))))
-                             ;; %% %%%
-                             ("%" (rx (+ "%")))
-                             ;; |> ||> |||> ||||> |] |} || ||| |-> ||-||
-                             ;; |->>-||-<<-| |- |== ||=||
-                             ;; |==>>==<<==<=>==//==/=!==:===>
-                             ("|" (rx (+ (or ">" "<" "|" "/" ":" "!" "}" "\]"
-                                             "-" "=" ))))
-                             ;; \\ \\\ \/
-                             ("\\" (rx (or "/" (+ "\\"))))
-                             ;; ++ +++ ++++ +>
-                             ("+" (rx (or ">" (+ "+"))))
-                             ;; :: ::: :::: :> :< := :// ::=
-                             (":" (rx (or ">" "<" "=" "//" ":=" (+ ":"))))
-                             ;; // /// //// /\ /* /> /===:===!=//===>>==>==/
-                             ("/" (rx (+ (or ">"  "<" "|" "/" "\\" "\*" ":" "!"
-                                             "="))))
-                             ;; .. ... .... .= .- .? ..= ..<
-                             ("\." (rx (or "=" "-" "\?" "\.=" "\.<" (+ "\."))))
-                             ;; -- --- ---- -~ -> ->> -| -|->-->>->--<<-|
-                             ("-" (rx (+ (or ">" "<" "|" "~" "-"))))
-                             ;; *> */ *)  ** *** ****
-                             ("*" (rx (or ">" "/" ")" (+ "*"))))
-                             ;; www wwww
-                             ("w" (rx (+ "w")))
-                             ;; <> <!-- <|> <: <~ <~> <~~ <+ <* <$ </  <+> <*>
-                             ;; <$> </> <|  <||  <||| <|||| <- <-| <-<<-|-> <->>
-                             ;; <<-> <= <=> <<==<<==>=|=>==/==//=!==:=>
-                             ;; << <<< <<<<
-                             ("<" (rx (+ (or "\+" "\*" "\$" "<" ">" ":" "~"  "!"
-                                             "-"  "/" "|" "="))))
-                             ;; >: >- >>- >--|-> >>-|-> >= >== >>== >=|=:=>>
-                             ;; >> >>> >>>>
-                             (">" (rx (+ (or ">" "<" "|" "/" ":" "=" "-"))))
-                             ;; #: #= #! #( #? #[ #{ #_ #_( ## ### #####
-                             ("#" (rx (or ":" "=" "!" "(" "\?" "\[" "{" "_(" "_"
-                                          (+ "#"))))
-                             ;; ~~ ~~~ ~=  ~-  ~@ ~> ~~>
-                             ("~" (rx (or ">" "=" "-" "@" "~>" (+ "~"))))
-                             ;; __ ___ ____ _|_ __|____|_
-                             ("_" (rx (+ (or "_" "|"))))
-                             ;; Fira code: 0xFF 0x12
-                             ("0" (rx (and "x" (+ (in "A-F" "a-f" "0-9")))))
-                             ;; Fira code:
-                             "Fl"  "Tl"  "fi"  "fj"  "fl"  "ft"
-                             ;; The few not covered by the regexps.
-                             "{|"  "[|"  "]#"  "(*"  "}#"  "$>"  "^="))
+                           '("www" "**" "***" "**/" "*>" "*/" "\\\\" "\\\\\\" "{-" "::"
+                                        ":::" ":=" "!!" "!=" "!==" "-}" "----" "-->" "->" "->>"
+                                        "-<" "-<<" "-~" "#{" "#[" "##" "###" "####" "#(" "#?" "#_"
+                                        "#_(" ".-" ".=" ".." "..<" "..." "?=" "??" ";;" "/*" "/**"
+                                        "/=" "/==" "/>" "//" "///" "&&" "||" "||=" "|=" "|>" "^=" "$>"
+                                        "++" "+++" "+>" "=:=" "==" "===" "==>" "=>" "=>>" "<="
+                                        "=<<" "=/=" ">-" ">=" ">=>" ">>" ">>-" ">>=" ">>>" "<*"
+                                        "<*>" "<|" "<|>" "<$" "<$>" "<!--" "<-" "<--" "<->" "<+"
+                                        "<+>" "<=" "<==" "<=>" "<=<" "<>" "<<" "<<-" "<<=" "<<<"
+                                        "<~" "<~~" "</" "</>" "~@" "~-" "~>" "~~" "~~>" "%%"))
      ;; Enables ligature checks globally in all buffers. You ;; can also do it
      ;; per mode with `ligature-mode'.
 
@@ -1049,6 +1001,7 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
    ;;     (writeroom-major-modes '(text-mode org-mode))
    ;;     :config
    ;;     (global-writeroom-mode))
+   
    (use-package olivetti
      :ensure t
      :hook
@@ -1056,6 +1009,8 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
      (olivetti-mode . (lambda () (text-scale-set 1.8)))
      :custom
      (olivetti-body-width 80)
+     :custom-face
+     (olivetti-fringe ((t (:inherit fringe :background "#ffffff"))))
      :config
      (keymap-unset olivetti-mode-map "C-c \\")
      (keymap-unset olivetti-mode-map "C-c |" )
@@ -1099,15 +1054,13 @@ Use karthink's Org patch for now for better Latex integration
               :pin nil)
   
   :hook (org-mode . org-latex-preview-auto-mode)
-  :bind
-  ("C-c n C" . org-capture)
   :config
   (keymap-unset org-mode-map "C-j")
   (defun org-directory-file (path)
     (concat org-directory "/" path))
   :custom
   (org-startup-with-latex-preview t)
-  (org-startup-folded 'content)
+  (org-startup-folded 'nofold)
   (org-default-notes-file (concat org-directory "/notes.org"))
   (org-capture-templates
    '(("t" "Todo" entry (file+headline "~/org/todos.org" "Todos")
@@ -1147,7 +1100,6 @@ Use karthink's Org patch for now for better Latex integration
         (goto-char list-begin)
         (insert res))))
   #+end_src
-
 - org-todo-keywords ::
   Add more expressive TODO keywords
   #+begin_src emacs-lisp
@@ -1170,9 +1122,7 @@ Use karthink's Org patch for now for better Latex integration
   (use-package org-eldoc)
   (use-package org-roam-he
     :straight
-    (:host github :repo "TheRobotFox/org-roam-hyperedge" :branch "main" :files ("*.el"))
-    ;;:load-path "straight/repos/org-roam-he/"
-    )
+    (:host github :repo "TheRobotFox/org-roam-hyperedge"))
   (use-package org-roam
     :custom
     (org-roam-directory (file-truename "~/org/roam/"))
@@ -1475,7 +1425,6 @@ Use karthink's Org patch for now for better Latex integration
       (define-key org-mode-map (kbd "C-<return>") #'+org/insert-item-below)
       (define-key org-mode-map (kbd "C-S-<return>") #'+org/insert-item-above))
 #+end_src
-
 *** COMMENT mathpix
     #+begin_src emacs-lisp
     (use-package mathpix.el
@@ -1498,169 +1447,14 @@ Use karthink's Org patch for now for better Latex integration
   (deft-directory org-roam-directory))
 
     #+end_src
-** Theme
-- install org-modern
-#+begin_src emacs-lisp
-(use-package emacs
-  :after org
-  :hook (org-mode . variable-pitch-mode)
-  :custom
-  (org-highlight-latex-and-related '(latex script entities))
-
-  ;; Better Headings
-  (org-adapt-indentation t)
-  (org-hide-leading-stars t)
-  ;; (org-startup-indented t)
-
-  (org-eldoc-breadcrumb-separator "→")
-
-  ;; Tags
-  (org-align-tags nil)
-  (org-tags-column 0)
-
-  (org-special-ctrl-a/e t)
-  (org-insert-heading-respect-content t)
-
-  (org-hide-emphasis-markers t)
-  (org-ellipsis "…")
-  
-  ;; agenda
-  (org-agenda-tags-column 0)
-  
-  
-  ;; Display latex unicode symbols
-  (org-pretty-entities t)
-  (org-pretty-entities-include-sub-superscripts nil)
-  
-  ;; prettify src blocks
-  (org-src-fontify-natively t)
-  (org-src-tab-acts-natively t)
-  (org-edit-src-content-indentation 0)
-
-  :config
-  ;; fixed pitch fonts
-  
-  (set-face-attribute 'org-table nil :inherit 'fixed-pitch)
-  (set-face-attribute 'org-block nil            :foreground nil :inherit
-		      'fixed-pitch :height 0.85)
-  (set-face-attribute 'org-code nil             :inherit '(shadow fixed-pitch) :height 0.85)
-  ;;  (set-face-attribute 'org-indent nil           :inherit '(org-hide fixed-pitch) :height 0.85)
-  (set-face-attribute 'org-verbatim nil         :inherit '(shadow fixed-pitch) :height 0.85)
-  (set-face-attribute 'org-special-keyword nil  :inherit '(font-lock-comment-face
-							   fixed-pitch))
-  (set-face-attribute 'org-meta-line nil        :inherit '(font-lock-comment-face fixed-pitch))
-  (set-face-attribute 'org-checkbox nil         :inherit 'fixed-pitch)
-
-  ;; Headers
-  (dolist (face '((org-level-1 . 1.35)
-		  (org-level-2 . 1.3)
-		  (org-level-3 . 1.2)
-		  (org-level-4 . 1.1)
-		  (org-level-5 . 1.1)
-		  (org-level-6 . 1.1)
-		  (org-level-7 . 1.1)
-		  (org-level-8 . 1.1)))
-    (set-face-attribute (car face) nil :font my/font-family-variable :weight 'bold :height (cdr face)))
-  
-  ;; Make the document title a bit bigger
-  (set-face-attribute 'org-drawer nil :height 0.7)
-  (set-face-attribute 'org-document-title nil :font my/font-family-variable :weight
-		      'bold :height 1.7)
-  
-  ;; Doom-Emacs-insert
-  (defun +org--insert-item (direction)
-    (let ((context (org-element-lineage
-                    (org-element-context)
-                    '(table table-row headline inlinetask item plain-list)
-                    t)))
-      (pcase (org-element-type context)
-	;; Add a new list item (carrying over checkboxes if necessary)
-	((or `item `plain-list)
-	 (let ((orig-point (point)))
-           ;; Position determines where org-insert-todo-heading and `org-insert-item'
-           ;; insert the new list item.
-           (if (eq direction 'above)
-               (org-beginning-of-item)
-             (end-of-line))
-           (let* ((ctx-item? (eq 'item (org-element-type context)))
-                  (ctx-cb (org-element-property :contents-begin context))
-                  ;; Hack to handle edge case where the point is at the
-                  ;; beginning of the first item
-                  (beginning-of-list? (and (not ctx-item?)
-                                           (= ctx-cb orig-point)))
-                  (item-context (if beginning-of-list?
-                                    (org-element-context)
-                                  context))
-                  ;; Horrible hack to handle edge case where the
-                  ;; line of the bullet is empty
-                  (ictx-cb (org-element-property :contents-begin item-context))
-                  (empty? (and (eq direction 'below)
-                               ;; in case contents-begin is nil, or contents-begin
-                               ;; equals the position end of the line, the item is
-                               ;; empty
-                               (or (not ictx-cb)
-                                   (= ictx-cb
-                                      (1+ (point))))))
-                  (pre-insert-point (point)))
-             ;; Insert dummy content, so that `org-insert-item'
-             ;; inserts content below this item
-             (when empty?
-               (insert " "))
-             (org-insert-item (org-element-property :checkbox context))
-             ;; Remove dummy content
-             (when empty?
-               (delete-region pre-insert-point (1+ pre-insert-point))))))
-	;; Add a new table row
-	((or `table `table-row)
-	 (pcase direction
-           ('below (org-table-next-row t))
-           ('above (org-table-insert-row)
-                   )))
-	
-	;; Otherwise, add a new heading, carrying over any todo state, if
-	;; necessary.
-	(_
-	 (let ((level (or (org-current-level) 1)))
-           ;; I intentionally avoid `org-insert-heading' and the like because they
-           ;; impose unpredictable whitespace rules depending on the cursor
-           ;; position. It's simpler to express this command's responsibility at a
-           ;; lower level than work around all the quirks in org's API.
-           (pcase direction
-             (`below
-              (let (org-insert-heading-respect-content)
-		(goto-char (line-end-position))
-		(org-end-of-subtree)
-		(insert "\n" (make-string level ?*) " ")))
-             (`above
-              (org-back-to-heading)
-              (insert (make-string level ?*) " ")
-              (save-excursion (insert "\n"))))
-           (run-hooks 'org-insert-heading-hook)
-           (when-let* ((todo-keyword (org-element-property :todo-keyword context))
-                       (todo-type    (org-element-property :todo-type context)))
-             (org-todo
-              (cond ((eq todo-type 'done)
-                     ;; Doesn't make sense to create more "DONE" headings
-                     )
-                    (todo-keyword)
-                    ('todo)))))))
-
-      (when (org-invisible-p)
-	(org-show-hidden-entry))
-      ))
-  (defun +org/insert-item-below (count)
-    "Inserts a new heading, table cell or item below the current one."
-    (interactive "p")
-    (dotimes (_ count) (+org--insert-item 'below)))
-
-  (defun +org/insert-item-above (count)
-    "Inserts a new heading, table cell or item above the current one."
-    (interactive "p")
-    (dotimes (_ count) (+org--insert-item 'above)))
-  
-  (define-key org-mode-map (kbd "C-<return>") #'+org/insert-item-below)
-  (define-key org-mode-map (kbd "C-S-<return>") #'+org/insert-item-above))
-#+end_src
+** Babel
+   #+begin_src emacs-lisp
+   (use-package org
+     :custom
+     (org-babel-load-languages
+   '((awk . t) (latex . t) (dot . t) (plantuml . t) (shell . t)
+     (haskell . t) (C . t) (emacs-lisp . t))))
+   #+end_src
 
 * Languages
 :PROPERTIES:
@@ -1668,15 +1462,6 @@ Use karthink's Org patch for now for better Latex integration
 :END:
 #+begin_src emacs-lisp
 (add-hook 'prog-mode-hook #'display-line-numbers-mode)
-(add-hook 'prog-mode-hook
-	  (lambda ()
-	    (setq tab-width 4
-			  tab-always-indent nil)
-	    (when (fboundp 'treesit-indent-region)
-	      (setq indent-region-function
-		    (lambda (START END)
-			  (treesit-indent-region START END)
-		      (tabify START END))))))
 #+end_src
 ** LaTeX :org:
    #+begin_src emacs-lisp
@@ -1697,29 +1482,27 @@ Use karthink's Org patch for now for better Latex integration
   #+end_src
 ** C/C++
   #+begin_src emacs-lisp
-  (use-package c-ts-mode
-    :custom
-    (c-ts-mode-indent-offset 4)
-    :init
-    ;; Remap the standard C/C++ modes
-    (add-to-list 'major-mode-remap-alist '(c-mode . c-ts-mode))
-    (add-to-list 'major-mode-remap-alist '(c++-mode . c++-ts-mode))
-    (add-to-list 'major-mode-remap-alist '(c-or-c++-mode . c-or-c++-ts-mode)))
+    (use-package c-ts-mode
+  	:dash
+  	(c-ts-mode "C")
+  	(c++-ts-mode "C++")
+
+      :custom
+      (c-ts-mode-indent-offset 4)
+      :init
+      ;; Remap the standard C/C++ modes
+      (add-to-list 'major-mode-remap-alist '(c-mode . c-ts-mode))
+      (add-to-list 'major-mode-remap-alist '(c++-mode . c++-ts-mode))
+      (add-to-list 'major-mode-remap-alist '(c-or-c++-mode . c-or-c++-ts-mode))
+      :hook
+  	;; LSP
+  	((c++-ts-mode c-ts-mode) . lsp)
+  	(lsp-clangd-after-open . (lambda () (keymap-set lsp-keymap "s" #'lsp-clangd-find-other-file)))
+
+  ;; Treesit
+    	((c++-ts-mode c-ts-mode) . #'my/enable-treesit-extra))
+
   #+end_src
-- Docs ::
-  #+begin_src emacs-lisp
-	(use-package emacs
-	  :dash
-	  (c-ts-mode "C")
-	  (c++-ts-mode "C++"))
-	#+end_src
-- LSP :: 
-  #+begin_src emacs-lisp
-	   (use-package emacs
-	     :hook
-	     ((c++-ts-mode c-ts-mode) . lsp)
-	     (lsp-clangd-after-open . (lambda () (keymap-set lsp-keymap "s" #'lsp-clangd-find-other-file))))
-      #+end_src
 - Ligatures ::
   #+begin_src emacs-lisp
   (use-package emacs
@@ -1763,6 +1546,8 @@ Use karthink's Org patch for now for better Latex integration
 ** Java
    #+begin_src emacs-lisp
    (use-package java-ts-mode
+     :hook
+     (java-ts-mode . #'my/enable-treesit-extra)
      :custom
      (java-ts-mode-indent-offset 4)
      :init
@@ -1777,25 +1562,25 @@ Use karthink's Org patch for now for better Latex integration
    #+end_src
 ** Haskell
    #+begin_src emacs-lisp
-   (use-package haskell-ts-mode
-     :ensure t
-     :after treesit
-     :custom
-     (haskell-ts-font-lock-level 4)
-     (haskell-ts-use-indent t)
-     (haskell-ts-ghci "ghci")
-     (haskell-ts-use-indent t)
-     :config
-     (add-to-list 'treesit-language-source-alist
-   	       '(haskell . ("https://github.com/tree-sitter/tree-sitter-haskell" "v0.23.1"))))
-
+   (use-package haskell-mode)
+         (use-package haskell-ts-mode
+           :ensure t
+           :after treesit
+           :custom
+           (haskell-ts-font-lock-level 4)
+           (haskell-ts-use-indent t)
+           (haskell-ts-ghci "ghci")
+           (haskell-ts-use-indent t)
+           :config
+           (add-to-list 'treesit-language-source-alist
+         	       '(haskell . ("https://github.com/tree-sitter/tree-sitter-haskell" "v0.23.1")))
+   	:init
+   	(add-to-list 'major-mode-remap-alist '(haskell-mode . haskell-ts-mode)))
+      
+      (use-package lsp-haskell
+          :hook (haskell-ts-mode . lsp))
    #+end_src
 
-- LSP ::
-  #+begin_src emacs-lisp
-  (use-package lsp-haskell
-    :hook (haskell-ts-mode . lsp))
-  #+end_src
 - Dante ::
   : TODO: Embark action
   Interactive Haskell eval in buffers and lsp like integration
@@ -1828,7 +1613,7 @@ Use karthink's Org patch for now for better Latex integration
   #+begin_src emacs-lisp
   (use-package consult-hoogle
     :straight `(:host nil
-      		   :repo "https://codeberg.org/rahguzar/consult-hoogle.git"
+      		    :repo "https://codeberg.org/rahguzar/consult-hoogle.git"
       		   :files (:defaults "*.el"))
      )
   #+end_src
@@ -1838,7 +1623,13 @@ Use karthink's Org patch for now for better Latex integration
       :ensure t
     :config
     (set-ligatures! 'haskell-ts-mode
-      :composition "."))
+      :composition "."
+      :to "->"
+      :from "<-"
+      :int "Int"
+      :float "Double"
+      :bool "Bool"
+      ))
   #+end_src
 
 * Bindings
