@@ -25,7 +25,7 @@
  ;; (add-hook 'minibuffer-exit-hook #'my-minibuffer-exit-hook)
 
  (setq gc-cons-threshold (* 1024 1024 200))
- (setq read-process-output-max (* 1024 1024))
+ (setq read-process-output-max (* 1024 1024 8))
  (setq custom-file "~/.config/emacs/custom.el")
  (load custom-file)
  (repeat-mode t)
@@ -33,16 +33,17 @@
 ** Straight
 *** Early Init
 #+begin_src emacs-lisp :tangle early-init.el
-  ;;; early-init.el --- Emacs early init file
-  ;;; Commentary:
-  ;; Code to run before init.el is loaded.
-  ;;; Code:
+;;; early-init.el --- Emacs early init file
+;;; Commentary:
+;; Code to run before init.el is loaded.
+;;; Code:
 
-  ;; Disable package.el
-  (setq package-enable-at-startup nil)
+;; Disable package.el
+(setq package-enable-at-startup nil)
+(setenv "LSP_USE_PLISTS" "true")
 
-  (provide 'early-init)
-  ;;; early-init.el ends here
+(provide 'early-init)
+;;; early-init.el ends here
 #+end_src
 *** Bootstrap
 #+begin_src emacs-lisp
@@ -648,14 +649,11 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
    #+begin_src emacs-lisp
    (defun my/enable-treesit-extras ()
      (setq tab-width 4
-   			  tab-always-indent nil)
-   	    (when (fboundp 'treesit-indent-region)
-   	      (setq indent-region-function
-   		    (lambda (START END)
-   			  (treesit-indent-region START END)
-   		      (tabify START END))))
-   		(ts-movement-mode 1)
-     )
+       	tab-always-indent nil
+           indent-region-function (lambda (START END)
+               			 (treesit-indent-region START END)
+               			 (tabify START END)))
+     (ts-movement-mode 1))
    #+end_src
 *** TS-movement
  #+begin_src emacs-lisp
@@ -691,7 +689,7 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
      (my/tsm/transpose 'treesit-node-next-sibling))
    (defun my/tsm/transpose-backward ()
      (interactive)
-     (my/tsm/transpose 'treesit-node-prev-sibling))
+     (my/tsm/transpose treesit-node-prev-sibling))
 
    (defvar-keymap  tsm-repeat-map
      :repeat (:enter () :exit (tsm/node-mark tsm/mc/mark-all-overlays))
@@ -1500,7 +1498,7 @@ Use karthink's Org patch for now for better Latex integration
   	(lsp-clangd-after-open . (lambda () (keymap-set lsp-keymap "s" #'lsp-clangd-find-other-file)))
 
   ;; Treesit
-    	((c++-ts-mode c-ts-mode) . (lambda ()(my/enable-treesit-extras))))
+    	((c++-ts-mode c-ts-mode) . (lambda () (my/enable-treesit-extras))))
 
   #+end_src
 - Ligatures ::
@@ -1547,14 +1545,14 @@ Use karthink's Org patch for now for better Latex integration
    #+begin_src emacs-lisp
    (use-package java-ts-mode
      :hook
-     (java-ts-mode . #'my/enable-treesit-extra)
+     (java-ts-mode . (lambda () (my/enable-treesit-extras)))
      :custom
      (java-ts-mode-indent-offset 4)
      :init
      (add-to-list 'major-mode-remap-alist '(java-mode . java-ts-mode)))
      (use-package lsp-java
-       :after dap
-       :hook (java-ts-mode . lsp)
+       :hook
+       (java-ts-mode . lsp)
        :custom
        (lsp-java-vmargs '("-XX:+UseParallelGC" "-XX:GCTimeRatio=4"
    "-XX:AdaptiveSizePolicyWeight=90"
