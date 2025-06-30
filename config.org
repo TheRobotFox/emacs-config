@@ -1500,7 +1500,7 @@ Use karthink's Org patch for now for better Latex integration
   	(lsp-clangd-after-open . (lambda () (keymap-set lsp-keymap "s" #'lsp-clangd-find-other-file)))
 
   ;; Treesit
-    	((c++-ts-mode c-ts-mode) . #'my/enable-treesit-extra))
+    	((c++-ts-mode c-ts-mode) . (lambda ()(my/enable-treesit-extras))))
 
   #+end_src
 - Ligatures ::
@@ -1631,6 +1631,12 @@ Use karthink's Org patch for now for better Latex integration
       :bool "Bool"
       ))
   #+end_src
+** Common Lisp
+   #+begin_src emacs-lisp
+   (use-package sly
+     :custom
+     (inferior-lisp-program "/usr/bin/sbcl"))
+   #+end_src
 
 * Bindings
 :PROPERTIES:
