@@ -585,7 +585,7 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
 
 #+end_src
 ** LSP
-#+begin_src emacs-lisp
+#+begin_src emacs-lisp :tangle no
 (use-package lsp-mode
   :custom
   (lsp-completion-provider :none) ;; we use Corfu!
@@ -615,17 +615,25 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
   ("C-c l" . lsp-keymap))
 #+end_src
 - lsp-ui ::
-  #+begin_src emacs-lisp
+  #+begin_src emacs-lisp :tangle no
   (use-package lsp-ui
     :custom
     (lsp-ui-doc-show-with-mouse nil)
     (lsp-ui-doc-position 'at-point))
   #+end_src
-- lsp-treemacs ::
-  #+begin_src emacs-lisp
-   (use-package lsp-treemacs
-     :functions treemacs-define-doubleclick-action)
-  #+end_src
+** Eglot
+   #+begin_src emacs-lisp
+   (use-package eglot
+     :bind
+     ("C-c l a" . eglot-code-actions)
+     ("C-c l r" . eglot-rename)
+     ("C-c l h" . eglot-show-call-hierarchy)
+     ("C-c l f" . eglot-format))
+   (use-package eglot-x
+     :straight `(eglot-x :host nil
+   		      :repo "https://github.com/nemethf/eglot-x")
+     )
+   #+end_src
 ** multiple-cursors
 #+begin_src emacs-lisp
   (use-package multiple-cursors
@@ -1056,6 +1064,8 @@ Use karthink's Org patch for now for better Latex integration
   (keymap-unset org-mode-map "C-j")
   (defun org-directory-file (path)
     (concat org-directory "/" path))
+  (setf (cdr (assoc 'file org-link-frame-setup)) 'find-file) ;; open Links in same Window
+  
   :custom
   (org-startup-with-latex-preview t)
   (org-startup-folded 'nofold)
@@ -1449,9 +1459,11 @@ Use karthink's Org patch for now for better Latex integration
    #+begin_src emacs-lisp
    (use-package org
      :custom
+     (org-plantuml-jar-path "/usr/share/java/plantuml/plantuml.jar")
      (org-babel-load-languages
    '((awk . t) (latex . t) (dot . t) (plantuml . t) (shell . t)
-     (haskell . t) (C . t) (emacs-lisp . t))))
+     (haskell . t) (C . t) (emacs-lisp . t) (gnuplot . t)))
+     :hook (org-babel-after-execute . org-redisplay-inline-images))
    #+end_src
 
 * Languages
@@ -1494,8 +1506,8 @@ Use karthink's Org patch for now for better Latex integration
       (add-to-list 'major-mode-remap-alist '(c-or-c++-mode . c-or-c++-ts-mode))
       :hook
   	;; LSP
-  	((c++-ts-mode c-ts-mode) . lsp)
-  	(lsp-clangd-after-open . (lambda () (keymap-set lsp-keymap "s" #'lsp-clangd-find-other-file)))
+  	((c++-ts-mode c-ts-mode) . eglot-ensure)
+  	;(lsp-clangd-after-open . (lambda () (keymap-set lsp-keymap "s" #'lsp-clangd-find-other-file)))
 
   ;; Treesit
     	((c++-ts-mode c-ts-mode) . (lambda () (my/enable-treesit-extras))))
@@ -1633,7 +1645,12 @@ Use karthink's Org patch for now for better Latex integration
    #+begin_src emacs-lisp
    (use-package sly
      :custom
-     (inferior-lisp-program "/usr/bin/sbcl"))
+     (inferior-lisp-program "/usr/bin/sbcl")
+     (sly-lisp-implementations '((sbcl ("/usr/bin/sbcl" "--dynamic-space-size" "6Gb")))))
+   #+end_src
+** Racket
+   #+begin_src emacs-lisp
+   (use-package racket-mode)
    #+end_src
 
 * Bindings
