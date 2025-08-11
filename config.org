@@ -721,6 +721,10 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
    (global-set-key (kbd "C-c m C") 'tsm/clear-overlays)
    (push 'tsm/mc/mark-all-overlays mc--default-cmds-to-run-once))
  #+end_src
+** wgrep
+   #+begin_src emacs-lisp
+   (use-package wgrep)
+   #+end_src
 * Extra 
 :PROPERTIES:
 :header-args:emacs-lisp: :tangle "init.el" :results none
