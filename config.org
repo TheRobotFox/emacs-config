@@ -129,6 +129,8 @@ Replace built-in navigation, search with consult actions
         ("C-x n k" . consult-keep-lines)
 
         ("M-g f" . consult-flymake)
+        ("M-g n" . flymake-goto-next-error)
+        ("M-g p" . flymake-goto-prev-error)
         ("M-g g" . smerge-start-session)
         ("M-g e" . consult-compile-error)
         ("M-g l" . consult-goto-line)
@@ -159,6 +161,9 @@ Replace built-in navigation, search with consult actions
        ("M-s e" . consult-isearch-history)       ;; orig. isearch-edit-string
        ("M-s l" . consult-line)                  ;; needed by consult-line to detect isearch
        ("M-s L" . consult-line-multi))
+     (:repeat-map flymake-goto-repeat-map
+   	       ("n" . flymake-goto-next-error)
+   	       ("p" . flymake-goto-prev-error))
      :init
      ;; Tweak the register preview for `consult-register-load',
      ;; `consult-register-store' and the built-in commands.  This improves the
@@ -179,13 +184,13 @@ Replace built-in navigation, search with consult actions
     ("M-g s" . consult-lsp-symbols))
   #+end_src
 ** Flycheck
-   #+begin_src emacs-lisp
+   #+begin_src emacs-lisp :tangle no
     (use-package flycheck
    :ensure t
    :hook (after-init . global-flycheck-mode))
    #+end_src
 - consult integration ::
-  #+begin_src emacs-lisp
+  #+begin_src emacs-lisp :tangle no
   (use-package consult-flycheck
     :bind ("M-g f" . consult-flycheck))  
   #+end_src
