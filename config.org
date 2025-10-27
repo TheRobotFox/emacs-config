@@ -9,6 +9,7 @@
 ** Emacs Setup
  
  #+begin_src emacs-lisp
+;;; ...  -*- lexical-binding: t -*-
  (setq inhibit-startup-screen t)
  (menu-bar-mode -1)
  (tool-bar-mode -1)
@@ -29,6 +30,8 @@
  (setq custom-file "~/.config/emacs/custom.el")
  (load custom-file)
  (repeat-mode t)
+
+ (setq backup-directory-alist `(("." . "~/.config/emacs/backup")))
  #+end_src
 ** Straight
 *** Early Init
@@ -702,7 +705,7 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
      (my/tsm/transpose 'treesit-node-next-sibling))
    (defun my/tsm/transpose-backward ()
      (interactive)
-     (my/tsm/transpose treesit-node-prev-sibling))
+     (my/tsm/transpose 'treesit-node-prev-sibling))
 
    (defvar-keymap  tsm-repeat-map
      :repeat (:enter () :exit (tsm/node-mark tsm/mc/mark-all-overlays))
@@ -729,6 +732,45 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
 ** wgrep
    #+begin_src emacs-lisp
    (use-package wgrep)
+   #+end_src
+** Custom
+   #+begin_src emacs-lisp
+
+   (defun create-src-file ()
+     (interactive)
+     (let* ((file (buffer-file-name))
+      	 (ext (file-name-extension file))
+      	 (inc (lambda () (insert "#include \"" (file-name-nondirectory file) "\"\n\n")))
+      	 (create (lambda (new-ext &rest body-fns)
+      		   (let ((new-file (file-name-with-extension file new-ext)))
+      		     (find-file-other-window new-file)
+      		     (if (file-exists-p new-file) (message "File already exits.")
+      		       (mapcar (lambda (fn) (funcall fn)) body-fns))))))
+       (cond
+        ((equal ext "hpp")
+         (funcall create "cpp" inc
+      	       (let* ((root (treesit-buffer-root-node))
+      		      (ns-decl (lambda (node)
+      				 (or (treesit-node-eq root node)
+      				     (equal (treesit-node-type node)
+      					    "namespace_definition"))))
+      		      (current-node (treesit-thing-at (point) ns-decl))
+      		      (ns-name ""))
+      		 
+      		 (while (not (or (null current-node) (treesit-node-eq current-node root)))
+      		   (progn
+      		     (setq ns-name (concat
+      				    (treesit-node-text
+      				     (treesit-node-child-by-field-name current-node "name"))
+      				    (if (> (length ns-name) 0) "::" "")
+      				    ns-name))
+      		     (setq current-node (treesit-parent-until
+      					 current-node ns-decl))))
+      		 (lambda () (if (> (length ns-name) 0)
+      				(insert "namespace " ns-name " {\n} // " ns-name))))))
+        ((equal ext "h") (create "c" inc))
+        (t (message "Language not recognized.")))))
+
    #+end_src
 * Extra 
 :PROPERTIES:
@@ -831,11 +873,20 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
  #+end_src
 - Fancy Vars :: 
 #+begin_src emacs-lisp
+(defun cartesian-product-call (fn l1 l2)
+  (mapcan (lambda (a)
+	    (mapcar (lambda (b) (funcall fn a b)) l2))
+	  l1))
 (defvar my/fancy-vars
-  (mapcar (lambda (character)
-	    (cons (string ?d character)
-		  (list ?Δ '(Br . cl) character)))
-	  (string-to-list "xyzwts")))
+  (append (mapcar (lambda (character)
+		    (cons (string ?d character)
+			  (list ?Δ '(Br . cl) character)))
+		  (string-to-list "xyzwts"))
+	  (cartesian-product-call (lambda (character subscript)
+			       (cons (string character subscript)
+				     (list character '(Br . cl) subscript)))
+			     (string-to-list "xyzktw")
+			     (string-to-list "nik0123456789"))))
 
 #+end_src
 - Doom Ligatures ::
@@ -1068,7 +1119,7 @@ Use karthink's Org patch for now for better Latex integration
 		   "(provide 'org-version)\n")))
               :pin nil)
   
-  :hook (org-mode . org-latex-preview-auto-mode)
+ :hook (org-mode . org-latex-preview-mode)
   :config
   (keymap-unset org-mode-map "C-j")
   (defun org-directory-file (path)
@@ -1076,19 +1127,12 @@ Use karthink's Org patch for now for better Latex integration
   (setf (cdr (assoc 'file org-link-frame-setup)) 'find-file) ;; open Links in same Window
   
   :custom
+
+  (org-agenda-include-diary t)
+  (diary-file "~/org/diary")
   (org-startup-with-latex-preview t)
   (org-startup-folded 'nofold)
-  (org-default-notes-file (concat org-directory "/notes.org"))
-  (org-capture-templates
-   '(("t" "Todo" entry (file+headline "~/org/todos.org" "Todos")
-      "* TODO %?\n  %i\n  %a")
-     ("T" "Task" entry (file+headline "~/org/todos.org" "Tasks")
-      "* TODO %?\nDEADLINE: %^{deadline}t\n  %i\n")
-     ;; TODO DOOM LIKE    ("j" "Journal" entry (file (org-directory-file "journal.org")) "* %^{Title} %T\n%?")
-     ("p" "Project Idea" entry (file "~/org/ideas.org") "*  %^{Title} %t\n%?")
-     ("a" "Question" entry (file "~/org/questions.org") "* TODO %^{Question} %T\n%?")
-     
-     )))
+  (org-default-notes-file (concat org-directory "/notes.org")))
 #+end_src
 - item-to-heading ::
   #+begin_src emacs-lisp
@@ -1132,6 +1176,34 @@ Use karthink's Org patch for now for better Latex integration
         "|"
         "DONE(d!)"
         "KILL(k@/!)"))))
+  #+end_src
+- capture ::
+  #+begin_src emacs-lisp
+  (use-package org
+    :config
+    (defun ha-file-for-class()
+      (interactive)
+      (let* ((dir "~/org/tu/")
+  	   (class (completing-read "Modul: " (--filter (file-directory-p (file-name-concat dir it))
+  						       (directory-files dir nil (rx (not "."))))))
+  	   (class-dir (file-name-concat dir class))
+  	   (ha-count (length (directory-files class-dir nil (rx "HA" digit))))
+  	   (file (file-name-concat class-dir (format "HA%d.org" (1+ ha-count)))))
+  	(set-buffer (find-file-noselect file))
+  	(insert (format "#+TITLE: %s Hausaufgabe %d" class (1+ ha-count)))
+  	(newline)))
+    
+    :custom
+    (org-capture-templates
+   '(("t" "Todo" entry (file+headline "~/org/todos.org" "Todos")
+      "* TODO %?\n  %i\n  %a")
+     ("T" "Task" entry (file+headline "~/org/todos.org" "Tasks")
+      "* TODO %?\nDEADLINE: %^{deadline}t\n  %i\n")
+     ;; TODO DOOM LIKE    ("j" "Journal" entry (file (org-directory-file "journal.org")) "* %^{Title} %T\n%?")
+     ("p" "Project Idea" entry (file "~/org/ideas.org") "*  %^{Title} %t\n%?")
+     ("a" "Question" entry (file "~/org/questions.org") "* TODO %^{Question} %T\n%?")
+     ("h" "Homework" plain (function ha-file-for-class) "")
+     )))
   #+end_src
 ** org roam
   #+begin_src emacs-lisp
@@ -1681,3 +1753,10 @@ Use karthink's Org patch for now for better Latex integration
   ("C-x C" . my/open-config)
   ("C-c i" . insert-char))
 #+end_src
+* OS
+** GhostText
+  #+begin_src emacs-lisp
+  (use-package atomic-chrome)
+  #+end_src
+
+#+RESULTS:
