@@ -13,7 +13,10 @@
  '(org-confirm-babel-evaluate nil)
  '(org-latex-preview-cache 'temp)
  '(org-safe-remote-resources '("\\`https://fniessen\\.github\\.io\\(?:/\\|\\'\\)"))
- '(org-startup-with-link-previews t))
+ '(org-startup-with-link-previews t)
+ '(package-vc-selected-packages
+   '((doxymacs :url "https://github.com/pniedzielski/doxymacs.git"
+	       :lisp-dir "lisp/"))))
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
