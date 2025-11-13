@@ -31,8 +31,9 @@
  (setq custom-file "~/.config/emacs/custom.el")
  (load custom-file)
  (repeat-mode t)
-
- (setq backup-directory-alist `(("." . "~/.config/emacs/backup")))
+ (setq backup-directory-alist `((".*" . "~/.config/emacs/backup")))
+ (setq auto-save- `((".*" . "~/.config/emacs/backup")))
+ (setq create-lockfiles nil)
 
  (auto-insert-mode t)
  (global-unset-key (kbd "C-x C-c"))
@@ -774,7 +775,7 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
       				(insert "namespace " ns-name " {\n} // " ns-name))))))
         ((equal ext "h") (create "c" inc))
         (t (message "Language not recognized.")))))
-
+   #+end_src
 ** Doxygen
    #+begin_src emacs-lisp
    (use-package doxymacs
@@ -1840,6 +1841,11 @@ Use karthink's Org patch for now for better Latex integration
    (use-package pyvenv)
    
 
+   #+end_src
+** Agda
+   #+begin_src emacs-lisp
+   (load-file (let ((coding-system-for-read 'utf-8))
+                (shell-command-to-string "agda --emacs-mode locate")))
    #+end_src
 
 * Bindings
