@@ -1,42 +1,39 @@
 #+TITLE: Emacs Config
-: #+PROPERTY: header-args:emacs-lisp: :tangle "my-init.el" :results none
-
 
 * Package Management
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle "init.el" :results none
+:header-args:emacs-lisp: :tangle init.el :results none
 :END:
 ** Emacs Setup
- 
- #+begin_src emacs-lisp
-;;; ...  -*- lexical-binding: t -*-
- (setq inhibit-startup-screen t)
- (menu-bar-mode -1)
- (tool-bar-mode -1)
- (scroll-bar-mode -1)
- (global-visual-line-mode t)
+  #+begin_src emacs-lisp
+  ;;; ...  -*- lexical-binding: t -*-
+   (setq inhibit-startup-screen t)
+   (menu-bar-mode -1)
+   (tool-bar-mode -1)
+   (scroll-bar-mode -1)
+   (global-visual-line-mode t)
 
- ;; (defun my-minibuffer-setup-hook ()
- ;;  (setq gc-cons-threshold most-positive-fixnum))
+   ;; (defun my-minibuffer-setup-hook ()
+   ;;  (setq gc-cons-threshold most-positive-fixnum))
 
- ;; (defun my-minibuffer-exit-hook ()
- ;;   (setq gc-cons-threshold 800000))
+   ;; (defun my-minibuffer-exit-hook ()
+   ;;   (setq gc-cons-threshold 800000))
 
- ;; (add-hook 'minibuffer-setup-hook #'my-minibuffer-setup-hook)
- ;; (add-hook 'minibuffer-exit-hook #'my-minibuffer-exit-hook)
+   ;; (add-hook 'minibuffer-setup-hook #'my-minibuffer-setup-hook)
+   ;; (add-hook 'minibuffer-exit-hook #'my-minibuffer-exit-hook)
 
- (setq backup-directory-alist '("." . ".~"))
- (setq gc-cons-threshold (* 1024 1024 200))
- (setq read-process-output-max (* 1024 1024 8))
- (setq custom-file "~/.config/emacs/custom.el")
- (load custom-file)
- (repeat-mode t)
- (setq backup-directory-alist `((".*" . "~/.config/emacs/backup")))
- (setq auto-save- `((".*" . "~/.config/emacs/backup")))
- (setq create-lockfiles nil)
+   (setq backup-directory-alist '("." . ".~"))
+   (setq gc-cons-threshold (* 1024 1024 200))
+   (setq read-process-output-max (* 1024 1024 8))
+   (setq custom-file "~/.config/emacs/custom.el")
+   (load custom-file)
+   (repeat-mode t)
+   (setq initial-scratch-message nil)
 
- (auto-insert-mode t)
- (global-unset-key (kbd "C-x C-c"))
+   (setq backup-directory-alist `(("." . "~/.config/emacs/backup")))
+
+   (auto-insert-mode t)
+   (global-unset-key (kbd "C-x C-c"))
  #+end_src
 ** Straight
 *** Early Init
@@ -93,7 +90,7 @@ Integration with use-package for automatic hiding via =:diminish= and =:delight=
 #+end_src
 * Essentials
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle "init.el" :results none
+:header-args:emacs-lisp: :tangle init.el :results none
 :END:
 ** Persistence
     Persist shell history and recent files across emacs restarts
@@ -433,7 +430,9 @@ Replace built-in navigation, search with consult actions
              "\\*Async Shell Command\\*"
              help-mode
              compilation-mode
-   	  eshell-mode))
+   	  eshell-mode
+   	  matlab-shell-mode
+   	  inferior-python-mode))
      ;;(setq popper-group-function #'popper-group-by-project) ; project.el projects
 
      (popper-mode +1)
@@ -522,7 +521,7 @@ Replace built-in navigation, search with consult actions
    #+end_src
 * Editing
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle "init.el" :results none
+:header-args:emacs-lisp: :tangle init.el :results none
 :END:
 ** expand-region
 #+begin_src emacs-lisp
@@ -775,15 +774,15 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
       				(insert "namespace " ns-name " {\n} // " ns-name))))))
         ((equal ext "h") (create "c" inc))
         (t (message "Language not recognized.")))))
-   #+end_src
+#+end_src
 ** Doxygen
    #+begin_src emacs-lisp
    (use-package doxymacs
   :vc (:url "https://github.com/pniedzielski/doxymacs.git"
             :rev :newest
             :lisp-dir "lisp/")
-  :hook (c-mode-common-hook . doxymacs-mode)
-  :bind (:map c-mode-base-map
+  :hook (c-ts-mode-common-hook . doxymacs-mode)
+  :bind (:map c-ts-base-mode-map
               ;; Lookup documentation for the symbol at point.
               ("C-c d ?" . doxymacs-lookup)
               ;; Rescan your Doxygen tags file.
@@ -820,7 +819,7 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
    #+end_src
 * Extra 
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle "init.el" :results none
+:header-args:emacs-lisp: :tangle init.el :results none
 :END:
 ** PDF tools
 #+begin_src emacs-lisp
@@ -838,7 +837,7 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
    #+end_src
 * Pretty
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle "init.el" :results none
+:header-args:emacs-lisp: :tangle init.el :results none
 :END:
 ** Fonts
 #+begin_src emacs-lisp
@@ -1132,9 +1131,8 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
 
 * org mode
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle "init.el" :results none
+:header-args:emacs-lisp: :tangle init.el :results none
 :END:
-
 Use karthink's Org patch for now for better Latex integration
 
 #+begin_src emacs-lisp
@@ -1173,7 +1171,7 @@ Use karthink's Org patch for now for better Latex integration
   (setf (cdr (assoc 'file org-link-frame-setup)) 'find-file) ;; open Links in same Window
   
   :custom
-
+  (fill-column 110)
   (org-agenda-include-diary t)
   (diary-file "~/org/diary")
   (org-startup-with-latex-preview t)
@@ -1250,6 +1248,10 @@ Use karthink's Org patch for now for better Latex integration
      ("a" "Question" entry (file "~/org/questions.org") "* TODO %^{Question} %T\n%?")
      ("h" "Homework" plain (function ha-file-for-class) "")
      )))
+  #+end_src
+- Github Flavoured Markdown ::
+  #+begin_src emacs-lisp
+  (use-package ox-gfm)
   #+end_src
 ** org roam
   #+begin_src emacs-lisp
@@ -1595,7 +1597,7 @@ Use karthink's Org patch for now for better Latex integration
 
 * Languages
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle "init.el" :results none
+:header-args:emacs-lisp: :tangle init.el :results none
 :END:
 #+begin_src emacs-lisp
 (add-hook 'prog-mode-hook #'display-line-numbers-mode)
@@ -1777,7 +1779,15 @@ Use karthink's Org patch for now for better Latex integration
    #+end_src
 ** Racket
    #+begin_src emacs-lisp
-   (use-package racket-mode)
+    (use-package racket-mode)
+    (use-package ob-racket
+   :after org
+   :config
+   (add-hook 'ob-racket-pre-runtime-library-load-hook
+   	      #'ob-racket-raco-make-runtime-library)
+   :straight (ob-racket
+   	       :type git :host github :repo "hasu/emacs-ob-racket"
+   	       :files ("*.el" "*.rkt")))
    #+end_src
 ** Vue
    #+begin_src emacs-lisp
@@ -1831,16 +1841,25 @@ Use karthink's Org patch for now for better Latex integration
        (setf (gethash "tsserver/request" (lsp--client-notification-handlers volar)) #'my/lsp-volar-handle-tserver-request)))
 
 
-   (my/lsp-volar-setup)   	    
-
-                  )
-
+   (my/lsp-volar-setup))
    #+end_src
 ** Python
    #+begin_src emacs-lisp
    (use-package pyvenv)
-   
-
+   #+end_src
+** Data Langs
+   #+begin_src emacs-lisp
+   (use-package yaml-mode)
+   #+end_src
+** MatLab
+   #+begin_src emacs-lisp
+   (use-package matlab-mode
+     :custom
+     (lsp-clients-matlab-server "/home/new/packages/MATLAB-language-server/out/index.js"))
+   #+end_src
+** OCaml
+   #+begin_src emacs-lisp
+   (use-package tuareg)
    #+end_src
 ** Agda
    #+begin_src emacs-lisp
@@ -1850,7 +1869,7 @@ Use karthink's Org patch for now for better Latex integration
 
 * Bindings
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle "init.el" :results none
+:header-args:emacs-lisp: :tangle init.el :results none
 :END:
 #+begin_src emacs-lisp 
 (use-package emacs
@@ -1868,9 +1887,10 @@ Use karthink's Org patch for now for better Latex integration
   ("C-c i" . insert-char))
 #+end_src
 * OS
+:PROPERTIES:
+:header-args:emacs-lisp: :tangle init.el :results none
+:END:
 ** GhostText
   #+begin_src emacs-lisp
   (use-package atomic-chrome)
   #+end_src
-
-#+RESULTS:
