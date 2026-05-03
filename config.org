@@ -1657,16 +1657,19 @@ Use karthink's Org patch for now for better Latex integration
   	(c-ts-mode "C")
   	(c++-ts-mode "C++")
 
-      :custom
-      (c-ts-mode-indent-offset 4)
-      :init
-      ;; Remap the standard C/C++ modes
-      (add-to-list 'major-mode-remap-alist '(c-mode . c-ts-mode))
-      (add-to-list 'major-mode-remap-alist '(c++-mode . c++-ts-mode))
-      (add-to-list 'major-mode-remap-alist '(c-or-c++-mode . c-or-c++-ts-mode))
-      :hook
-  	;; LSP
-  	((c++-ts-mode c-ts-mode) . eglot-ensure)
+    :custom
+    (c-ts-mode-indent-offset 4)
+    :init
+    (add-to-list 'treesit-language-source-alist
+         	       '(cpp . ("https://github.com/tree-sitter/tree-sitter-cpp")))
+    
+    ;; Remap the standard C/C++ modes
+    (add-to-list 'major-mode-remap-alist '(c-mode . c-ts-mode))
+    (add-to-list 'major-mode-remap-alist '(c++-mode . c++-ts-mode))
+    (add-to-list 'major-mode-remap-alist '(c-or-c++-mode . c-or-c++-ts-mode))
+    :hook
+    ;; LSP
+    ((c++-ts-mode c-ts-mode) . eglot-ensure)
 
   ;; Treesit
     	((c++-ts-mode c-ts-mode) . (lambda () (my/enable-treesit-extras))))
