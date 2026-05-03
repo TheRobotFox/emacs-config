@@ -1,8 +1,10 @@
 #+TITLE: Emacs Config
+: #+PROPERTY: header-args:emacs-lisp: :tangle "my-init.el" :results none
+
 
 * Package Management
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle init.el :results none
+:header-args:emacs-lisp: :tangle "init.el" :results none
 :END:
 ** Emacs Setup
  
@@ -37,6 +39,7 @@
   (global-unset-key (kbd "C-x C-c"))
   (global-auto-revert-mode 1)
   (setq auto-revert-interval 1)
+ (recentf-mode 1)
  #+end_src
 ** Straight
 *** Early Init
@@ -86,7 +89,7 @@ Integration with use-package for automatic hiding via =:diminish= and =:delight=
 #+end_src
 * Essentials
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle init.el :results none
+:header-args:emacs-lisp: :tangle "init.el" :results none
 :END:
 ** Persistence
     Persist shell history and recent files across emacs restarts
@@ -393,7 +396,7 @@ Replace built-in navigation, search with consult actions
 #+begin_src emacs-lisp
   (use-package yasnippet
     :custom
-    yas-snippet-dirs '("~/.config/emacs/snippets")
+    (yasnippet-snippets-dir "~/.config/emacs/snippets")
     :config
     (yas-global-mode 1))
   (use-package yasnippet-snippets
@@ -420,9 +423,7 @@ Replace built-in navigation, search with consult actions
              help-mode
              compilation-mode
    	  eshell-mode
-   	  inferior-python-mode))
    	  vterm-mode))
-
      ;;(setq popper-group-function #'popper-group-by-project) ; project.el projects
 
      (popper-mode +1)
@@ -515,7 +516,7 @@ Replace built-in navigation, search with consult actions
    #+end_src
 * Editing
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle init.el :results none
+:header-args:emacs-lisp: :tangle "init.el" :results none
 :END:
 ** expand-region
 #+begin_src emacs-lisp
@@ -791,8 +792,8 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
   :vc (:url "https://github.com/pniedzielski/doxymacs.git"
             :rev :newest
             :lisp-dir "lisp/")
-  :hook (c-ts-mode-common-hook . doxymacs-mode)
-  :bind (:map c-ts-base-mode-map
+  :hook (c-mode-common-hook . doxymacs-mode)
+  :bind (:map c-mode-base-map
               ;; Lookup documentation for the symbol at point.
               ("C-c d ?" . doxymacs-lookup)
               ;; Rescan your Doxygen tags file.
@@ -841,7 +842,7 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
    #+end_src
 * Extra 
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle init.el :results none
+:header-args:emacs-lisp: :tangle "init.el" :results none
 :END:
 ** COMMENT PDF tools
 #+begin_src emacs-lisp
@@ -857,9 +858,13 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
      :custom
      (emacs-everywhere-app-info-function #'emacs-everywhere--app-info-linux-sway))
    #+end_src
+** Matrix
+   #+begin_src emacs-lisp
+   (use-package ement)
+   #+end_src
 * Pretty
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle init.el :results none
+:header-args:emacs-lisp: :tangle "init.el" :results none
 :END:
 ** Fonts
 #+begin_src emacs-lisp
@@ -916,7 +921,7 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
     :list          "𝕃"
     
     ;; Flow
-    :not           "￢"
+    :not           "¬"
     :in            "∈"
     :not-in        "∉"
     :and           "∧"
@@ -1153,8 +1158,9 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
 
 * org mode
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle init.el :results none
+:header-args:emacs-lisp: :tangle "init.el" :results none
 :END:
+
 Use karthink's Org patch for now for better Latex integration
 
 #+begin_src emacs-lisp
@@ -1193,12 +1199,22 @@ Use karthink's Org patch for now for better Latex integration
   (setf (cdr (assoc 'file org-link-frame-setup)) 'find-file) ;; open Links in same Window
   
   :custom
-  (fill-column 110)
+
   (org-agenda-include-diary t)
   (diary-file "~/org/diary")
   (org-startup-with-latex-preview t)
   (org-startup-folded 'nofold)
-  (org-default-notes-file (concat org-directory "/notes.org")))
+  (org-default-notes-file (concat org-directory "/notes.org"))
+  (org-capture-templates
+   '(("t" "Todo" entry (file+headline "~/org/todos.org" "Todos")
+      "* TODO %?\n  %i\n  %a")
+     ("T" "Task" entry (file+headline "~/org/todos.org" "Tasks")
+      "* TODO %?\nDEADLINE: %^{deadline}t\n  %i\n")
+     ;; TODO DOOM LIKE    ("j" "Journal" entry (file (org-directory-file "journal.org")) "* %^{Title} %T\n%?")
+     ("p" "Project Idea" entry (file "~/org/ideas.org") "*  %^{Title} %t\n%?")
+     ("a" "Question" entry (file "~/org/questions.org") "* TODO %^{Question} %T\n%?")
+     
+     )))
 #+end_src
 - item-to-heading ::
   #+begin_src emacs-lisp
@@ -1265,38 +1281,6 @@ Use karthink's Org patch for now for better Latex integration
      ("a" "Question" entry (file "~/org/questions.org") "* TODO %^{Question} %T\n%?")
      ("h" "Homework" plain (function ha-file-for-class) "")
      ))
-  #+end_src
-- capture ::
-  #+begin_src emacs-lisp
-  (use-package org
-    :config
-    (defun ha-file-for-class()
-      (interactive)
-      (let* ((dir "~/org/tu/")
-  	   (class (completing-read "Modul: " (--filter (file-directory-p (file-name-concat dir it))
-  						       (directory-files dir nil (rx (not "."))))))
-  	   (class-dir (file-name-concat dir class))
-  	   (ha-count (length (directory-files class-dir nil (rx "HA" digit))))
-  	   (file (file-name-concat class-dir (format "HA%d.org" (1+ ha-count)))))
-  	(set-buffer (find-file-noselect file))
-  	(insert (format "#+TITLE: %s Hausaufgabe %d" class (1+ ha-count)))
-  	(newline)))
-    
-    :custom
-    (org-capture-templates
-   '(("t" "Todo" entry (file+headline "~/org/todos.org" "Todos")
-      "* TODO %?\n  %i\n  %a")
-     ("T" "Task" entry (file+headline "~/org/todos.org" "Tasks")
-      "* TODO %?\nDEADLINE: %^{deadline}t\n  %i\n")
-     ;; TODO DOOM LIKE    ("j" "Journal" entry (file (org-directory-file "journal.org")) "* %^{Title} %T\n%?")
-     ("p" "Project Idea" entry (file "~/org/ideas.org") "*  %^{Title} %t\n%?")
-     ("a" "Question" entry (file "~/org/questions.org") "* TODO %^{Question} %T\n%?")
-     ("h" "Homework" plain (function ha-file-for-class) "")
-     )))
-  #+end_src
-- Github Flavoured Markdown ::
-  #+begin_src emacs-lisp
-  (use-package ox-gfm)
   #+end_src
 ** org roam
   #+begin_src emacs-lisp
@@ -1617,18 +1601,18 @@ Use karthink's Org patch for now for better Latex integration
   (deft-directory org-roam-directory))
 
     #+end_src
-** COMMENT Babel
+** Babel
    #+begin_src emacs-lisp
      (setq org-plantuml-jar-path "/usr/share/java/plantuml/plantuml.jar")
      (setq org-babel-load-languages
    '((awk . t) (latex . t) (dot . t) (plantuml . t) (shell . t)
      (haskell . t) (C . t) (emacs-lisp . t) (gnuplot . t)))
- (add-hook org-babel-after-execute org-redisplay-inline-images)
+ (add-hook 'org-babel-after-execute #'org-redisplay-inline-images)
    #+end_src
 
 * Languages
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle init.el :results none
+:header-args:emacs-lisp: :tangle "init.el" :results none
 :END:
 #+begin_src emacs-lisp
 (add-hook 'prog-mode-hook #'display-line-numbers-mode)
@@ -1652,10 +1636,10 @@ Use karthink's Org patch for now for better Latex integration
   #+end_src
 ** C/C++
   #+begin_src emacs-lisp
-    (use-package c-ts-mode
-  	:dash
-  	(c-ts-mode "C")
-  	(c++-ts-mode "C++")
+  (use-package c-ts-mode
+    :dash
+    (c-ts-mode "C")
+    (c++-ts-mode "C++")
 
     :custom
     (c-ts-mode-indent-offset 4)
@@ -1671,8 +1655,8 @@ Use karthink's Org patch for now for better Latex integration
     ;; LSP
     ((c++-ts-mode c-ts-mode) . eglot-ensure)
 
-  ;; Treesit
-    	((c++-ts-mode c-ts-mode) . (lambda () (my/enable-treesit-extras))))
+    ;; Treesit
+    ((c++-ts-mode c-ts-mode) . (lambda () (my/enable-treesit-extras))))
 
   #+end_src
 - Ligatures ::
@@ -1732,6 +1716,26 @@ Use karthink's Org patch for now for better Latex integration
    "-XX:AdaptiveSizePolicyWeight=90"
    "-Dsun.zip.disableMemoryMapping=true" "-Xmx4G" "-Xms500m")))
    #+end_src
+- Ligatures ::
+#+begin_src emacs-lisp
+(use-package emacs
+  :config
+  (set-ligatures! 'java-ts-mode
+    ;; Types
+    :null "null"
+    :true "true" :false "false"
+    :int "int" :float "float"
+    :str "String"
+    :bool "boolean"
+    ;; Flow
+    :not "!"
+    :and "&&" :or "||"
+    :for "for"
+    :return "return"
+    ))
+
+#+end_src
+
 ** Haskell
    #+begin_src emacs-lisp
    (use-package haskell-mode)
@@ -1812,33 +1816,13 @@ Use karthink's Org patch for now for better Latex integration
    #+end_src
 ** COMMENT Racket
    #+begin_src emacs-lisp
-    (use-package racket-mode)
-    (use-package ob-racket
-   :after org
-   :config
-   (add-hook 'ob-racket-pre-runtime-library-load-hook
-   	      #'ob-racket-raco-make-runtime-library)
-   :straight (ob-racket
-   	       :type git :host github :repo "hasu/emacs-ob-racket"
-   	       :files ("*.el" "*.rkt")))
+   (use-package racket-mode)
    #+end_src
-** COMMENT Python
+** Python
    #+begin_src emacs-lisp
    (use-package pyvenv)
-   #+end_src
-** Data Langs
-   #+begin_src emacs-lisp
-   (use-package yaml-mode)
-   #+end_src
-** MatLab
-   #+begin_src emacs-lisp
-   (use-package matlab-mode
-     :custom
-     (lsp-clients-matlab-server "/home/new/packages/MATLAB-language-server/out/index.js"))
-   #+end_src
-** OCaml
-   #+begin_src emacs-lisp
-   (use-package tuareg)
+   
+
    #+end_src
 ** COMMENT Agda
    #+begin_src emacs-lisp
@@ -1863,7 +1847,7 @@ Use karthink's Org patch for now for better Latex integration
 
 * Bindings
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle init.el :results none
+:header-args:emacs-lisp: :tangle "init.el" :results none
 :END:
 #+begin_src emacs-lisp 
 (use-package emacs
@@ -1881,10 +1865,9 @@ Use karthink's Org patch for now for better Latex integration
   ("C-c i" . insert-char))
 #+end_src
 * OS
-:PROPERTIES:
-:header-args:emacs-lisp: :tangle init.el :results none
-:END:
 ** GhostText
   #+begin_src emacs-lisp
   (use-package atomic-chrome)
   #+end_src
+
+#+RESULTS:
