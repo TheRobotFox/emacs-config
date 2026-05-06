@@ -1767,7 +1767,6 @@ Use karthink's Org patch for now for better Latex integration
     :straight `(:host nil
       		    :repo "https://codeberg.org/rahguzar/consult-hoogle.git"
       		   :files (:defaults "*.el"))
-
     :bind ("C-h h" . consult-hoogle))
   #+end_src
 - Ligatures ::
