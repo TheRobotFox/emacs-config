@@ -1,0 +1,5 @@
+# -*- mode: snippet -*-
+# name: patn
+# key: patn
+# --
+$1_0 $2 $1_1 $2 \ldots $2 $1_{$3}

@@ -1,6 +1,4 @@
 #+TITLE: Emacs Config
-: #+PROPERTY: header-args:emacs-lisp: :tangle "my-init.el" :results none
-
 
 * Package Management
 :PROPERTIES:
@@ -44,6 +42,7 @@
 ** Straight
 *** Early Init
 #+begin_src emacs-lisp :tangle early-init.el
+;;; ...  -*- lexical-binding: t -*-
 ;;; early-init.el --- Emacs early init file
 ;;; Commentary:
 ;; Code to run before init.el is loaded.
@@ -187,7 +186,7 @@ Replace built-in navigation, search with consult actions
     :bind
     ("M-g s" . consult-lsp-symbols))
   #+end_src
-** Flycheck
+** COMMENT Flycheck
    #+begin_src emacs-lisp
     (use-package flycheck
    :ensure t
@@ -282,173 +281,144 @@ Replace built-in navigation, search with consult actions
     ;; ...
     )
  #+end_src
-**** dabbrev
-     Disable dabbrev in some buffers
-     #+begin_src emacs-lisp
-     (use-package dabbrev
-  ;; Swap M-/ and C-M-/
-  :bind (("M-/" . dabbrev-completion)
-         ("C-M-/" . dabbrev-expand))
-  :config
-  (add-to-list 'dabbrev-ignored-buffer-regexps "\\` ")
-  ;; Available since Emacs 29 (Use `dabbrev-ignored-buffer-regexps' on older Emacs)
-  (add-to-list 'dabbrev-ignored-buffer-modes 'authinfo-mode)
-  (add-to-list 'dabbrev-ignored-buffer-modes 'doc-view-mode)
-  (add-to-list 'dabbrev-ignored-buffer-modes 'pdf-view-mode)
-  (add-to-list 'dabbrev-ignored-buffer-modes 'tags-table-mode))
-     #+end_src
 **** COMMENT Overlay
-     #+begin_src emacs-lisp
+               #+begin_src emacs-lisp
 
-     (use-package corfu-candidate-overlay
-       :straight (:type git
-    		:repo "https://code.bsdgeek.org/adam/corfu-candidate-overlay"
-    		:files (:defaults "*.el"))
-       :after corfu
-       :config
-       ;; enable corfu-candidate-overlay mode globally
-       ;; this relies on having corfu-auto set to nil
-       (corfu-candidate-overlay-mode +1)
-       )
+	       (use-package corfu-candidate-overlay
+	         :straight (:type git
+	       		   :repo "https://code.bsdgeek.org/adam/corfu-candidate-overlay"
+	       		   :files (:defaults "*.el"))
+	         :after corfu
+	         :config
+	         ;; enable corfu-candidate-overlay mode globally
+	         ;; this relies on having corfu-auto set to nil
+	         (corfu-candidate-overlay-mode +1)
+	         )
 
      #+end_src
 *** COMMENT Company
-    #+begin_src emacs-lisp
-    (use-package company
-      :config
-      ;;(global-company-mode)
-      )
+            #+begin_src emacs-lisp
+	(use-package company
+	  :config
+	  ;;(global-company-mode)
+	  )
     #+end_src
 ** Documentation
    #+begin_src emacs-lisp
-         (use-package dash-docs
-   	:custom
-   	(dash-docs-browser-func 'eww-browse-url))
+   (use-package dash-docs
+     :custom
+     (dash-docs-browser-func 'eww-browse-url))
    (use-package consult-dash
      :bind (("M-s d" . consult-dash))
      :config
      ;; Use the symbol at point as initial search term
      (consult-customize consult-dash :initial (thing-at-point 'symbol)))
-         
+
    #+end_src
 ** Minibuffer
 *** Vertico
- Vertical Completion Engine
- #+begin_src emacs-lisp 
-       (use-package vertico
-       :custom
-       ;; (vertico-scroll-margin 0) ;; Different scroll margin
-       ;; (vertico-count 20) ;; Show more candidates
-       (vertico-resize t) ;; Grow and shrink the Vertico minibuffer
-       ;; (vertico-cycle t) ;; Enable cycling for `vertico-next/previous'
-       :init
-       (vertico-mode))
- #+end_src
+    Vertical Completion Engine
+    #+begin_src emacs-lisp 
+    (use-package vertico
+      :custom
+      ;; (vertico-scroll-margin 0) ;; Different scroll margin
+      ;; (vertico-count 20) ;; Show more candidates
+      (vertico-resize t) ;; Grow and shrink the Vertico minibuffer
+      ;; (vertico-cycle t) ;; Enable cycling for `vertico-next/previous'
+      :init
+      (vertico-mode))
+    #+end_src
 
 *** Recursive Minibuffer
-   Allow to open nested minibuffers
-   #+begin_src emacs-lisp 
-     ;; Emacs minibuffer configurations.
-     (use-package emacs
-       :custom
-       ;; Support opening new minibuffers from inside existing minibuffers.
-       (enable-recursive-minibuffers t)
-       ;; Hide commands in M-x which do not work in the current mode.  Vertico
-       ;; commands are hidden in normal buffers. This setting is useful beyond
-       ;; Vertico.
-       (read-extended-command-predicate #'command-completion-default-include-p)
-       ;; Do not allow the cursor in the minibuffer prompt
-       (minibuffer-prompt-properties
-	'(read-only t cursor-intangible t face minibuffer-prompt)))
-   #+end_src
+    Allow to open nested minibuffers
+    #+begin_src emacs-lisp 
+    ;; Emacs minibuffer configurations.
+    (use-package emacs
+      :custom
+      ;; Support opening new minibuffers from inside existing minibuffers.
+      (enable-recursive-minibuffers t)
+      ;; Hide commands in M-x which do not work in the current mode.  Vertico
+      ;; commands are hidden in normal buffers. This setting is useful beyond
+      ;; Vertico.
+      (read-extended-command-predicate #'command-completion-default-include-p)
+      ;; Do not allow the cursor in the minibuffer prompt
+      (minibuffer-prompt-properties
+       '(read-only t cursor-intangible t face minibuffer-prompt)))
+    #+end_src
 *** Marginalia
     Show Docstrings in minibuffer
- #+begin_src emacs-lisp
-   (use-package marginalia
-     ;; Bind `marginalia-cycle' locally in the minibuffer.  To make the binding
-     ;; available in the *Completions* buffer, add it to the
-     ;; `completion-list-mode-map'.
-     :bind (:map minibuffer-local-map
-            ("M-A" . marginalia-cycle))
+    #+begin_src emacs-lisp
+    (use-package marginalia
+      ;; Bind `marginalia-cycle' locally in the minibuffer.  To make the binding
+      ;; available in the *Completions* buffer, add it to the
+      ;; `completion-list-mode-map'.
+      :bind (:map minibuffer-local-map
+                  ("M-A" . marginalia-cycle))
 
-     ;; The :init section is always executed.
-     :init
+      ;; The :init section is always executed.
+      :init
 
-     ;; Marginalia must be activated in the :init section of use-package such that
-     ;; the mode gets enabled right away. Note that this forces loading the
-     ;; package.
-     (marginalia-mode))
- #+end_src
+      ;; Marginalia must be activated in the :init section of use-package such that
+      ;; the mode gets enabled right away. Note that this forces loading the
+      ;; package.
+      (marginalia-mode))
+     #+end_src
 ** which-key
 
-#+begin_src emacs-lisp
-  (use-package which-key
-    :diminish
-    :custom
-    (which-key-idle-secondary-delay 0.3)
-   ;(which-key-dont-use-unicode t)
-    :config
-    (which-key-mode t))
-
-#+end_src
-
-** yasnippet
-#+begin_src emacs-lisp
-  (use-package yasnippet
-    :custom
-    (yasnippet-snippets-dir "~/.config/emacs/snippets")
-    :config
-    (yas-global-mode 1))
-  (use-package yasnippet-snippets
-    :after yasnippet)
-  (use-package yasnippet-capf
-  :after cape
-  :config
-  (add-to-list 'completion-at-point-functions #'yasnippet-capf))
-#+end_src
-** Popper
    #+begin_src emacs-lisp
-   (use-package popper
-     :ensure t ; or :straight t
-     :bind
-     ("C-c o"   . popper-toggle)
-     ("C-c O"   . popper-cycle)
-     ("C-c M-o" . popper-toggle-type)
-     :init
-     (setq popper-reference-buffers
-   	'("\\*Messages\\*"
-             "Output\\*$"
-             "\\*Async Shell Command\\*"
-             "\\*Flycheck error messages\\*"
-             help-mode
-             compilation-mode
-   	  eshell-mode
-   	  vterm-mode))
-     ;;(setq popper-group-function #'popper-group-by-project) ; project.el projects
+   (use-package which-key
+     :diminish
+     :custom
+     (which-key-idle-secondary-delay 0.3)
+   					;(which-key-dont-use-unicode t)
+     :config
+     (which-key-mode t))
 
-     (popper-mode +1)
-     (popper-echo-mode +1))                ; For echo area hints
    #+end_src
 
+** Popper
+      #+begin_src emacs-lisp
+      (use-package popper
+        :ensure t ; or :straight t
+        :bind
+        ("C-c o"   . popper-toggle)
+        ("C-c O"   . popper-cycle)
+        ("C-c M-o" . popper-toggle-type)
+        :init
+        (setq popper-reference-buffers
+      	'("\\*Messages\\*"
+                "Output\\*$"
+                "\\*Async Shell Command\\*"
+                "\\*Flycheck error messages\\*"
+                help-mode
+                compilation-mode
+      	  eshell-mode
+      	  vterm-mode))
+        ;;(setq popper-group-function #'popper-group-by-project) ; project.el projects
+
+        (popper-mode +1)
+        (popper-echo-mode +1))                ; For echo area hints
+      #+end_src
+
 ** COMMENT tabspaces
-#+begin_src emacs-lisp
-(use-package tabspaces
-  ;; use this next line only if you also use straight, otherwise ignore it. 
-  :straight (:type git :host github :repo "mclear-tools/tabspaces")
-  :hook (after-init . tabspaces-mode) ;; use this only if you want the minor-mode loaded at startup. 
-  :commands (tabspaces-switch-or-create-workspace
-             tabspaces-open-or-create-project-and-workspace)
-  :custom
-  (tabspaces-use-filtered-buffers-as-default t)
-  (tabspaces-default-tab "Default")
-  (tabspaces-remove-to-default t)
-  ;;(tabspaces-include-buffers '("*scratch*"))
-  (tabspaces-initialize-project-with-todo t)
-  (tabspaces-todo-file-name "project-todo.org")
-  ;; sessions
-  (tabspaces-session t)
-  (tabspaces-session-auto-restore t))
-#+end_src
+   #+begin_src emacs-lisp
+   (use-package tabspaces
+     ;; use this next line only if you also use straight, otherwise ignore it. 
+     :straight (:type git :host github :repo "mclear-tools/tabspaces")
+     :hook (after-init . tabspaces-mode) ;; use this only if you want the minor-mode loaded at startup. 
+     :commands (tabspaces-switch-or-create-workspace
+                tabspaces-open-or-create-project-and-workspace)
+     :custom
+     (tabspaces-use-filtered-buffers-as-default t)
+     (tabspaces-default-tab "Default")
+     (tabspaces-remove-to-default t)
+     ;;(tabspaces-include-buffers '("*scratch*"))
+     (tabspaces-initialize-project-with-todo t)
+     (tabspaces-todo-file-name "project-todo.org")
+     ;; sessions
+     (tabspaces-session t)
+     (tabspaces-session-auto-restore t))
+   #+end_src
 ** Embark
    #+begin_src emacs-lisp
    (use-package embark
@@ -459,34 +429,34 @@ Replace built-in navigation, search with consult actions
       ("C-;" . embark-dwim)        ;; good alternative: M-.
       ("C-h B" . embark-bindings)) ;; alternative for `describe-bindings'
 
-  :init
+     :init
 
-  ;; Optionally replace the key help with a completing-read interface
-  (setq prefix-help-command #'embark-prefix-help-command)
+     ;; Optionally replace the key help with a completing-read interface
+     (setq prefix-help-command #'embark-prefix-help-command)
 
-  ;; Show the Embark target at point via Eldoc. You may adjust the
-  ;; Eldoc strategy, if you want to see the documentation from
-  ;; multiple providers. Beware that using this can be a little
-  ;; jarring since the message shown in the minibuffer can be more
-  ;; than one line, causing the modeline to move up and down:
+     ;; Show the Embark target at point via Eldoc. You may adjust the
+     ;; Eldoc strategy, if you want to see the documentation from
+     ;; multiple providers. Beware that using this can be a little
+     ;; jarring since the message shown in the minibuffer can be more
+     ;; than one line, causing the modeline to move up and down:
 
-  ;; (add-hook 'eldoc-documentation-functions #'embark-eldoc-first-target)
-  ;; (setq eldoc-documentation-strategy #'eldoc-documentation-compose-eagerly)
+     ;; (add-hook 'eldoc-documentation-functions #'embark-eldoc-first-target)
+     ;; (setq eldoc-documentation-strategy #'eldoc-documentation-compose-eagerly)
 
-  :config
+     :config
 
-  ;; Hide the mode line of the Embark live/completions buffers
-  (add-to-list 'display-buffer-alist
-               '("\\`\\*Embark Collect \\(Live\\|Completions\\)\\*"
-                 nil
-                 (window-parameters (mode-line-format . none)))))
+     ;; Hide the mode line of the Embark live/completions buffers
+     (add-to-list 'display-buffer-alist
+                  '("\\`\\*Embark Collect \\(Live\\|Completions\\)\\*"
+                    nil
+                    (window-parameters (mode-line-format . none)))))
 
-;; Consult users will also want the embark-consult package.
-(use-package embark-consult
-  :ensure t ; only need to install it, embark loads it after consult if found
-  :hook
-  (embark-collect-mode . consult-preview-at-point-mode))
-#+end_src
+   ;; Consult users will also want the embark-consult package.
+   (use-package embark-consult
+     :ensure t ; only need to install it, embark loads it after consult if found
+     :hook
+     (embark-collect-mode . consult-preview-at-point-mode))
+   #+end_src
 ** Git
    #+begin_src emacs-lisp
    (use-package magit
@@ -513,24 +483,42 @@ Replace built-in navigation, search with consult actions
 ** Vterm
    #+begin_src emacs-lisp
    (use-package vterm)
-   #+end_src
+      #+end_src
 * Editing
-:PROPERTIES:
-:header-args:emacs-lisp: :tangle "init.el" :results none
-:END:
+  :PROPERTIES:
+  :header-args:emacs-lisp: :tangle "init.el" :results none
+  :END:
 ** expand-region
-#+begin_src emacs-lisp
-  (use-package expand-region
-    :bind ("C-=" . er/expand-region))
-#+end_src
+   #+begin_src emacs-lisp
+   (use-package expand-region
+     :bind ("C-=" . er/expand-region))
+   #+end_src
 ** embrace
-Edit Pattern enclosed text eg =(..)= or ="string"=
-#+begin_src emacs-lisp
-  (use-package embrace
-    :bind
-    ("C-x C-c" . embrace-change)
-    ("C-x C-d" . embrace-delete))
-#+end_src
+   Edit Pattern enclosed text eg =(..)= or ="string"=
+   #+begin_src emacs-lisp
+   (use-package embrace
+     :bind
+     ("C-x C-c" . embrace-change)
+     ("C-x C-d" . embrace-delete))
+   #+end_src
+** yasnippet
+   #+begin_src emacs-lisp
+   (use-package yasnippet
+     :bind
+     (("M-SPC" . yas-expand)
+     ("M-S-SPC" . yas-insert-snippet)
+     )
+     :custom
+     (yas-snippet-dirs '("~/.config/emacs/snippets"))
+     :config
+     (yas-global-mode 1))
+   (use-package yasnippet-snippets
+     :after yasnippet)
+   (use-package yasnippet-capf
+     :after cape
+     :config
+     (add-to-list 'completion-at-point-functions #'yasnippet-capf))
+   #+end_src
 ** Smartparens
 #+begin_src emacs-lisp
   (use-package smartparens
@@ -1156,7 +1144,7 @@ Edit Pattern enclosed text eg =(..)= or ="string"=
      (keymap-unset olivetti-mode-map "C-c }" ))
    #+end_src
 
-* org mode
+* Org Mode
 :PROPERTIES:
 :header-args:emacs-lisp: :tangle "init.el" :results none
 :END:
@@ -1216,7 +1204,7 @@ Use karthink's Org patch for now for better Latex integration
      
      )))
 #+end_src
-- item-to-heading ::
+ * item-to-heading ::
   #+begin_src emacs-lisp
       (defun my/promote-item-at-point--render ()
     "Render org-item as Headline"
@@ -1241,7 +1229,7 @@ Use karthink's Org patch for now for better Latex integration
       (goto-char list-begin)
       (insert res)))
   #+end_src
-- org-todo-keywords ::
+ * org-todo-keywords ::
   Add more expressive TODO keywords
   #+begin_src emacs-lisp
 
@@ -1256,7 +1244,11 @@ Use karthink's Org patch for now for better Latex integration
         "DONE(d!)"
         "KILL(k@/!)")))
   #+end_src
-- capture ::
+ * Transclusion ::
+   #+begin_src emacs-lisp :tangle no
+   (use-package org-transclusion)
+   #+end_src
+ * capture ::
   #+begin_src emacs-lisp
 
     (defun ha-file-for-class()
@@ -1739,28 +1731,12 @@ Use karthink's Org patch for now for better Latex integration
 ** Haskell
    #+begin_src emacs-lisp
    (use-package haskell-mode)
-         (use-package haskell-ts-mode
-           :ensure t
-           :after treesit
-           :custom
-           (haskell-ts-font-lock-level 4)
-           (haskell-ts-use-indent t)
-           (haskell-ts-ghci "ghci")
-           (haskell-ts-use-indent t)
-           :config
-           (add-to-list 'treesit-language-source-alist
-         	       '(haskell . ("https://github.com/tree-sitter/tree-sitter-haskell" "v0.23.1")))
-   	:init
-   	(add-to-list 'major-mode-remap-alist '(haskell-mode . haskell-ts-mode)))
-      
-      (use-package lsp-haskell
-          :hook (haskell-ts-mode . lsp))
    #+end_src
 
 - Dante ::
   : TODO: Embark action
   Interactive Haskell eval in buffers and lsp like integration
-  #+begin_src emacs-lisp
+  #+begin_src emacs-lisp :tangle no
   ;; (use-package flymake-flycheck)
   (use-package dante
     :ensure t ; ask use-package to install the package
@@ -1791,7 +1767,8 @@ Use karthink's Org patch for now for better Latex integration
     :straight `(:host nil
       		    :repo "https://codeberg.org/rahguzar/consult-hoogle.git"
       		   :files (:defaults "*.el"))
-     )
+
+    :bind ("C-h h" . consult-hoogle))
   #+end_src
 - Ligatures ::
   #+begin_src emacs-lisp

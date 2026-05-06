@@ -1,0 +1,4 @@
+# key: ceil
+# name: ceil
+# --
+\lceil $1 \rceil
