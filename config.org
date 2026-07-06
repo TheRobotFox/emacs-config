@@ -660,8 +660,9 @@ Replace built-in navigation, search with consult actions
    #+begin_src emacs-lisp
    (use-package phi-search
      :config
+     (global-set-key (kbd "M-%") 'phi-replace-query)
      (global-set-key (kbd "C-s") 'phi-search)
-(global-set-key (kbd "C-r") 'phi-search-backward))
+     (global-set-key (kbd "C-r") 'phi-search-backward))
    #+end_src
 
 ** Treesitter
@@ -832,12 +833,15 @@ Replace built-in navigation, search with consult actions
 :PROPERTIES:
 :header-args:emacs-lisp: :tangle "init.el" :results none
 :END:
-** COMMENT PDF tools
+** PDF
 #+begin_src emacs-lisp
 (use-package pdf-tools
-  :ensure t
   :mode ("\\.pdf\\'" . pdf-view-mode)
+  :config
+  (define-key pdf-view-mode-map (kbd "C-s") #'isearch-forward)
+  (define-key pdf-view-mode-map (kbd "C-r") #'isearch-backward)
   :pin manual)
+;(use-package org-noter)
 #+end_src
 ** Emacs Everywhere
    #+begin_src emacs-lisp
@@ -849,6 +853,12 @@ Replace built-in navigation, search with consult actions
 ** Matrix
    #+begin_src emacs-lisp
    (use-package ement)
+   #+end_src
+** Anki
+   #+begin_src emacs-lisp
+    (use-package org-anki
+      :straight 
+      '(org-anki :type git :host github :repo "eyeinsky/org-anki" :fork t))
    #+end_src
 * Pretty
 :PROPERTIES:
@@ -1195,10 +1205,9 @@ Use karthink's Org patch for now for better Latex integration
   (org-default-notes-file (concat org-directory "/notes.org"))
   (org-capture-templates
    '(("t" "Todo" entry (file+headline "~/org/todos.org" "Todos")
-      "* TODO %?\n  %i\n  %a")
+      "* TODO %?\n  %i\n  %a"  :prepend t)
      ("T" "Task" entry (file+headline "~/org/todos.org" "Tasks")
       "* TODO %?\nDEADLINE: %^{deadline}t\n  %i\n")
-     ;; TODO DOOM LIKE    ("j" "Journal" entry (file (org-directory-file "journal.org")) "* %^{Title} %T\n%?")
      ("p" "Project Idea" entry (file "~/org/ideas.org") "*  %^{Title} %t\n%?")
      ("a" "Question" entry (file "~/org/questions.org") "* TODO %^{Question} %T\n%?")
      
@@ -1276,44 +1285,50 @@ Use karthink's Org patch for now for better Latex integration
   #+end_src
 ** org roam
   #+begin_src emacs-lisp
-  (use-package org-contrib)
-  (use-package org-eldoc)
-;;  (use-package org-roam-he
-;;    :straight
-;;    (:host github :repo "TheRobotFox/org-roam-hyperedge"))
-  (use-package org-roam
-    :custom
-    (org-roam-directory (file-truename "~/org/roam/"))
-    
-    :config
-    (defvar-keymap org-node-map
-      "f" #'org-roam-node-find
-      "F" #'org-roam-he-find-oriented
+    (use-package org-contrib)
+    (use-package org-eldoc)
+  ;;  (use-package org-roam-he
+  ;;    :straight
+  ;;    (:host github :repo "TheRobotFox/org-roam-hyperedge"))
+    (use-package org-roam
+      :custom
+      (org-roam-directory (file-truename "~/org/roam/"))
       
-      "i" #'org-roam-node-insert
-      "I" #'org-roam-he-insert
-
-      "r" #'org-roam-buffer-toggle
-      "u" #'org-roam-ui-open
-
-      ;;"C" #'org-roam-capture ;; redundent?
-      "C" #'org-id-get-create
-      "c" #'org-capture
-      "e" #'org-roam-extract-subtree
+      :config
+  (defun my/open-todo ()
+    (interactive)
+    (find-file "~/org/todos.org"))
       
-      ;; Dailies
-      "d" #'org-roam-dailies-capture-today)
-    
-    (setq org-roam-v2-ack t)
-    (org-roam-db-autosync-mode)
-    (add-hook 'org-roam-buffer-postrender-functions
-  	    (lambda () (org-latex-preview--preview-region
-  			org-latex-preview-process-default (point-min) (point-max)))) ; latex preview
-    ;; If using org-roam-protocol
-    (require 'org-roam-protocol)
-    (require 'org-roam-export)
-    :bind-keymap
-    ("C-c n" . org-node-map))
+      (defvar-keymap org-node-map
+        "f" #'org-roam-node-find
+        "F" #'org-roam-he-find-oriented
+        
+        "i" #'org-roam-node-insert
+        "I" #'org-roam-he-insert
+        
+        "t" #'my/open-todo
+
+        "r" #'org-roam-buffer-toggle
+        "u" #'org-roam-ui-open
+
+        ;;"C" #'org-roam-capture ;; redundent?
+        "C" #'org-id-get-create
+        "c" #'org-capture
+        "e" #'org-roam-extract-subtree
+        
+        ;; Dailies
+        "d" #'org-roam-dailies-capture-today)
+      
+      (setq org-roam-v2-ack t)
+      (org-roam-db-autosync-mode)
+      (add-hook 'org-roam-buffer-postrender-functions
+    	    (lambda () (org-latex-preview--preview-region
+    			org-latex-preview-process-default (point-min) (point-max)))) ; latex preview
+      ;; If using org-roam-protocol
+      (require 'org-roam-protocol)
+      (require 'org-roam-export)
+      :bind-keymap
+      ("C-c n" . org-node-map))
     	 #+end_src
 - Node-Hierachie-View ::
    #+begin_src emacs-lisp 
@@ -1624,7 +1639,13 @@ Use karthink's Org patch for now for better Latex integration
   (use-package emacs
     :after org
     :custom
-    (org-latex-toc-command . "\\tableofcontents\\pagebreak"))
+    (org-latex-toc-command "\\tableofcontents\\pagebreak")
+    :config
+    (add-to-list 'org-latex-classes
+             '("tubeamer"
+               "\\input{~/org/tu/TSHPS/template.tex}"
+               ("\\section{%s}" . "\\section*{%s}")
+               ("\\subsection{%s}" . "\\subsection*{%s}"))))
   #+end_src
 ** C/C++
   #+begin_src emacs-lisp
@@ -1819,6 +1840,38 @@ Use karthink's Org patch for now for better Latex integration
         (css "https://github.com/tree-sitter/tree-sitter-css")
         (typescript "https://github.com/tree-sitter/tree-sitter-typescript" "master" "tsx/src")))
        )
+   #+end_src
+** GLSL
+   #+begin_src emacs-lisp
+    (use-package glsl-mode)
+    (use-package polymode
+   :ensure t
+   :config
+   ;; 1. Define the GLSL inner mode chunk
+   (define-innermode poly-glsl-string-innermode
+     :mode 'glsl-mode
+     ;; Adjust head-matcher regex to fit your preferred language's string style
+     ;; This looks for a magic comment like /* glsl */ followed by a quote or backtick
+     :head-matcher "\"\"\"\\W*#version "
+     :tail-matcher "\"\"\""
+     :head-mode 'host
+     :tail-mode 'host)
+
+   ;; 2. Tie it to a host mode (e.g., C++ mode)
+   (define-hostmode poly-c++-hostmode :mode 'c++-mode)
+   (define-hostmode poly-haskell-hostmode :mode 'haskell-mode)
+
+   (define-polymode poly-c++-glsl-mode
+     :hostmode 'poly-c++-hostmode
+     :innermodes '(poly-glsl-string-innermode))
+
+   (define-polymode poly-haskell-glsl-mode
+     :hostmode 'poly-haskell-hostmode
+     :innermodes '(poly-glsl-string-innermode))
+
+   ;; 3. Associate your files with the new polymode
+   (add-to-list 'auto-mode-alist '("\\.cpp\\'" . poly-c++-glsl-mode))
+   (add-to-list 'auto-mode-alist '("\\.hs\\'" . poly-haskell-glsl-mode)))
    #+end_src
 
 * Bindings
