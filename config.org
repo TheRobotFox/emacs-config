@@ -36,6 +36,7 @@
   (auto-insert-mode t)
   (global-unset-key (kbd "C-x C-c"))
   (global-auto-revert-mode 1)
+ (setq dired-dwim-target t)
   (setq auto-revert-interval 1)
  (recentf-mode 1)
  #+end_src
@@ -277,7 +278,8 @@ Replace built-in navigation, search with consult actions
 
     :hook
     (org-mode . (lambda ()
-  		 (add-hook 'completion-at-point-functions #'cape-dict)))
+  		 (add-hook 'completion-at-point-functions #'cape-file)
+ 		(add-hook 'completion-at-point-functions #'cape-dict)))
     ;; ...
     )
  #+end_src
@@ -834,7 +836,7 @@ Replace built-in navigation, search with consult actions
 :header-args:emacs-lisp: :tangle "init.el" :results none
 :END:
 ** PDF
-#+begin_src emacs-lisp
+   #+begin_src emacs-lisp
 (use-package pdf-tools
   :mode ("\\.pdf\\'" . pdf-view-mode)
   :config
@@ -855,10 +857,11 @@ Replace built-in navigation, search with consult actions
    (use-package ement)
    #+end_src
 ** Anki
-   #+begin_src emacs-lisp
-    (use-package org-anki
-      :straight 
-      '(org-anki :type git :host github :repo "eyeinsky/org-anki" :fork t))
+   #+begin_src emacs-lisp 
+   (use-package org-anki
+     :after org
+      :straight
+      (:host github :repo "TheRobotFox/org-anki"))
    #+end_src
 * Pretty
 :PROPERTIES:
@@ -1295,21 +1298,18 @@ Use karthink's Org patch for now for better Latex integration
       (org-roam-directory (file-truename "~/org/roam/"))
       
       :config
-  (defun my/open-todo ()
-    (interactive)
-    (find-file "~/org/todos.org"))
-      
       (defvar-keymap org-node-map
         "f" #'org-roam-node-find
         "F" #'org-roam-he-find-oriented
         
         "i" #'org-roam-node-insert
         "I" #'org-roam-he-insert
-        
-        "t" #'my/open-todo
 
         "r" #'org-roam-buffer-toggle
         "u" #'org-roam-ui-open
+        
+        "t" #'org-roam-tag-add
+        "a" #'org-roam-alias-add
 
         ;;"C" #'org-roam-capture ;; redundent?
         "C" #'org-id-get-create
@@ -1647,6 +1647,16 @@ Use karthink's Org patch for now for better Latex integration
                ("\\section{%s}" . "\\section*{%s}")
                ("\\subsection{%s}" . "\\subsection*{%s}"))))
   #+end_src
+** Maxima
+   #+begin_src emacs-lisp
+         (use-package maxima
+           :config
+           (add-to-list 'load-path "/usr/share/emacs/site-lisp/maxima/imaxima.el")
+   	(autoload 'imaxima "imaxima" "Frontend for maxima with Image support" t)
+   	(autoload 'imath-mode "imath" "Imath mode for math formula input" t)
+
+   )
+   #+end_src
 ** C/C++
   #+begin_src emacs-lisp
   (use-package c-ts-mode
