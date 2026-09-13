@@ -37,7 +37,6 @@ Add the handwritten helper directory to Emacs's load path.
 ** Early init
 
 Disable package.el before normal startup so Straight owns package installation.
-Keep the existing LSP environment setting for the inactive LSP experiment.
 #+begin_src emacs-lisp :tangle early-init.el
 ;;; ...  -*- lexical-binding: t -*-
 ;;; early-init.el --- Emacs early init file
@@ -77,12 +76,17 @@ This must run before any package declarations below.
 #+end_src
 
 Use Straight as the default installer for use-package declarations.
-Keep recipe inheritance and the configured GitHub username together.
 #+begin_src emacs-lisp
 (straight-use-package 'use-package)
 (setq straight-use-package-by-default t)
 (setq straight-allow-recipe-inheritance t)
 (setq straight-host-usernames '((github . "TheRobotFox")))
+#+end_src
+
+Register Eglot and its dependencies before helpers can load project.el or Eldoc.
+This prevents library-source conflicts when Eglot loads.
+#+begin_src emacs-lisp
+(straight-use-package 'eglot)
 #+end_src
 
 ** Diminish
@@ -116,8 +120,7 @@ Use separate backup and autosave directories under the Emacs configuration direc
 
 ** History and persistence
 
-Persist minibuffer history across Emacs sessions.
-Persist the kill ring and Corfu completion history alongside minibuffer histories.
+Persist minibuffer history, the kill ring, and Corfu completion history across sessions.
 #+begin_src emacs-lisp
 (use-package savehist
   :config
@@ -132,7 +135,7 @@ Persist the kill ring and Corfu completion history alongside minibuffer historie
 
 ** Editing defaults
 
-Enable visual line wrapping and repeatable commands, and retain the global fill width.
+Enable visual line wrapping and repeatable commands.
 Release =C-x C-c= for the Embrace binding defined below.
 #+begin_src emacs-lisp
 (setq-default fill-column 1100)
@@ -143,7 +146,7 @@ Release =C-x C-c= for the Embrace binding defined below.
 
 ** General keybindings
 
-Keep general editing, window navigation, and configuration shortcuts together.
+Define general editing, window navigation, and configuration shortcuts.
 Package-specific bindings remain beside their owning package.
 #+begin_src emacs-lisp
 (use-package emacs
@@ -180,7 +183,6 @@ Use a shorter delay when updating an already visible which-key popup.
 ** Frame defaults
 
 Suppress the startup screen and hide menu, tool, and scroll bars.
-These defaults apply independently of the chosen theme.
 #+begin_src emacs-lisp
 (setq inhibit-startup-screen t)
 (menu-bar-mode -1)
@@ -193,7 +195,7 @@ These defaults apply independently of the chosen theme.
 Choose the fixed and variable fonts and the default text size.
 Org heading faces below reuse the variable-font setting.
 #+begin_src emacs-lisp
-(setq my/font-size 16)
+(setq my/font-size 12)
 (setq my/font-family-variable "Fira Sans"
       my/font-family-fixed "Fira Code hs")
 
@@ -218,7 +220,6 @@ Theme trust remains local bookkeeping in =custom.el=.
 ** Icons
 
 Provide icon support and decorate Dired file listings.
-The Dired hook enables icons when opening a directory buffer.
 #+begin_src emacs-lisp
 (use-package all-the-icons)
 (use-package all-the-icons-dired
@@ -227,14 +228,28 @@ The Dired hook enables icons when opening a directory buffer.
 
 ** Ligatures and prettification
 
-Load symbol tables and adapted Doom helpers from [[file:lisp/my-ligatures.el][my-ligatures.el]].
-Language-specific symbol substitutions are configured with each language below.
+Define shared characters in =my/pretty-symbols= in [[file:lisp/my-ligatures.el][my-ligatures.el]]; language declarations reference their names.
+Use =M-x prettify-symbols-mode= to toggle substitutions, revealing original text at point.
+Refresh edited rules with =M-x my/prettify-setup=.
 #+begin_src emacs-lisp
 (require 'my-ligatures)
+(setopt prettify-symbols-unprettify-at-point 'right-edge)
+(add-hook 'after-change-major-mode-hook #'my/prettify-setup)
 #+end_src
 
-Enable font ligatures and apply the configured symbolic substitutions.
-Reveal original text at point so prettification does not obscure editing.
+Prettify code names such as =x_i=, =d_x= and =eps= in programming buffers.
+Extend the defaults with =my/math-set=; toggle display with =my/math-symbols-mode=.
+#+begin_src emacs-lisp
+(my/math-set prog-mode
+  :subscripts ("x" "y" "z" "k" "t" "w")
+  :indices "ijkn0123456789"
+  :deltas ("x" "y" "z" "k" "t" "w")
+  :symbols (("eps" epsilon)))
+(add-hook 'prog-mode-hook (lambda () (my/math-symbols-mode 1)))
+#+end_src
+
+Let the font shape programming operators, plus prose ligatures in EWW.
+Toggle font ligatures with =M-x ligature-mode=.
 #+begin_src emacs-lisp
 (use-package ligature
   :config
@@ -256,49 +271,89 @@ Reveal original text at point so prettification does not obscure editing.
                             "<*>" "<|" "<|>" "<$" "<$>" "<!--" "<-" "<--" "<->" "<+"
                             "<+>" "<=" "<==" "<=>" "<=<" "<>" "<<" "<<-" "<<=" "<<<"
                             "<~" "<~~" "</" "</>" "~@" "~-" "~>" "~~" "~~>" "%%"))
-  ;; Enables ligature checks globally in all buffers. You ;; can also do it
-  ;; per mode with `ligature-mode'.
-
-
-  (setq prettify-symbols-unprettify-at-point 'right-edge) ;; open ligatures when on them
-
-  :hook
-  (after-change-major-mode . my/ligatures-init-extra-symbols-h)
-  (after-init . global-ligature-mode))
+  :hook (after-init . global-ligature-mode))
 #+end_src
 
 ** Scrolling
 
 Enable smooth pixel-based scrolling.
-This affects scrolling behavior without changing navigation bindings.
 #+begin_src emacs-lisp
 (pixel-scroll-precision-mode t)
 #+end_src
 
 ** Popper
 
-Group popup buffers by project and provide shortcuts to toggle or cycle them.
-Help, compilation, terminal, and similar output buffers share this policy.
+*** Supporting panes and navigation
+
+With one editing column and at least 140 columns of frame width, supporting panes
+open on the right: documentation above, shell/REPL/output below. Otherwise they
+open at the bottom, with documentation on the left and process output on the right.
+Existing panes stay in place until closed or moved with =M-o s=; visible buffers reuse their windows.
+
+| Key | Action |
+|-----+--------|
+| =M-o e= | Select this project's Eshell; create it on first use |
+| =M-o r= | Select the associated language REPL or choose a project REPL |
+| =M-o d= | Toggle full Eldoc without leaving your code |
+| =M-o s= | Switch open supporting panes between right and bottom, keeping focus |
+| =C-c o= | Toggle the latest popup |
+| =C-c O= | Cycle popups using Popper's normal order |
+| =C-c M-o= | Promote a popup to an ordinary buffer, or demote it |
+
+Eshell and REPL commands select the process pane; Popper toggles individual popups.
+Start Python, SLY, and Haskell runtimes with their normal commands first.
+Popups use the source project as their group, or its directory outside a project.
+
+Eldoc shows short documentation in the echo area and full documentation in its pane.
+In Dired, clicks and =RET= open in place; =o= opens another window and =C-o= previews.
+
+Load the supporting-pane display action and expose direct commands under one prefix.
+Make Dired mouse clicks match keyboard navigation.
+#+begin_src emacs-lisp
+(require 'my-window-workflow)
+(defvar-keymap my/popup-command-map
+  "e" #'my/popup-eshell
+  "r" #'my/popup-repl
+  "d" #'my/popup-eldoc
+  "s" #'my/popup-toggle-side)
+(keymap-global-set "M-o" my/popup-command-map)
+(with-eval-after-load 'dired
+  (keymap-set dired-mode-map "<mouse-2>" #'dired-mouse-find-file))
+(setopt eldoc-echo-area-use-multiline-p nil
+        eldoc-echo-area-prefer-doc-buffer t)
+#+end_src
+
+*** Popup tracking
+
+Group popups by project while the shared display action handles their placement.
+Give documentation and process panes separate slots.
 #+begin_src emacs-lisp
 (use-package popper
-
+  :demand t
   :bind
   ("C-c o"   . popper-toggle)
   ("C-c O"   . popper-cycle)
   ("C-c M-o" . popper-toggle-type)
   :init
+  (require 'project)
+  (require 'my-window-workflow)
   (setq popper-reference-buffers
         '("\\*Messages\\*"
           "Output\\*$"
           "\\*Async Shell Command\\*"
           "\\*Flycheck error messages\\*"
+          "\\` *\\*eldoc\\*"
+          "\\`\\*\\(?:eshell\\|shell\\|vterm\\|term\\)"
+          my/popup-reference-p
           haskell-interactive-mode
           help-mode
           compilation-mode
           eshell-mode
           vterm-mode))
-  (setq popper-group-function #'popper-group-by-project) ; project.el projects
-
+  (setq popper-group-function #'my/popup-group
+        popper-display-function #'my/popup-display)
+  :config
+  (require 'popper-echo)
   (popper-mode +1)
   (popper-echo-mode +1))                ; For echo area hints
 #+end_src
@@ -308,7 +363,6 @@ Help, compilation, terminal, and similar output buffers share this policy.
 ** Completion defaults
 
 Ignore case when completing file names, buffer names, and other candidates.
-Completion interfaces below share these baseline settings.
 #+begin_src emacs-lisp
 (use-package emacs
   :straight nil
@@ -441,7 +495,6 @@ Use =C-c p= to request specialized completion, including Lisp symbols, explicitl
 ** Consult
 
 Use Consult for buffer switching, search, registers, diagnostics, and cross-references.
-Related navigation bindings and preview behavior are kept in this declaration.
 #+begin_src emacs-lisp
 (use-package consult
   :bind
@@ -561,7 +614,6 @@ Collected results get a simplified window presentation.
 ** wgrep
 
 Allow editing search-result buffers and applying changes back to their files.
-This complements the search and collection commands above.
 #+begin_src emacs-lisp
 (use-package wgrep)
 #+end_src
@@ -653,7 +705,7 @@ The command is bound to =C-==.
 ** embrace
 
 Change or remove surrounding delimiters with Embrace.
-Keep the existing =C-x C-c= and =C-x C-d= shortcuts.
+Use =C-x C-c= and =C-x C-d=.
 #+begin_src emacs-lisp
 (use-package embrace
   :bind
@@ -722,7 +774,6 @@ Keep Return available for normal editing while multiple cursors are active.
 ** Common programming defaults
 
 Show line numbers in programming buffers.
-Individual language sections add their own tooling and indentation settings.
 #+begin_src emacs-lisp
 (add-hook 'prog-mode-hook #'display-line-numbers-mode)
 #+end_src
@@ -730,7 +781,7 @@ Individual language sections add their own tooling and indentation settings.
 ** Git
 
 Use Magit for Git and =C-c v= for repeatable conflict resolution in Smerge buffers.
-Conflict bindings are buffer-local; the global =M-g= navigation prefix stays available.
+Conflict bindings are buffer-local.
 #+begin_src emacs-lisp
 (use-package magit
   :bind ("M-s g f" . magit-find-file))
@@ -777,7 +828,6 @@ Individual language hooks decide when to start a language server.
 ** Tree-sitter helpers
 
 Load structural editing helpers from [[file:lisp/my-treesit.el][my-treesit.el]] after multiple-cursors.
-Keep TS-movement's repeat map here beside its package configuration.
 #+begin_src emacs-lisp
 (use-package ts-movement
   :straight `(ts-movement :host nil
@@ -813,7 +863,6 @@ Keep TS-movement's repeat map here beside its package configuration.
 *** Maxima
 
 Provide Maxima interaction and autoload its image-capable interfaces.
-The existing system installation path is retained.
 #+begin_src emacs-lisp
 (use-package maxima
   :config
@@ -827,7 +876,6 @@ The existing system installation path is retained.
 *** C/C++
 
 Use Tree-sitter C/C++ modes with Eglot and shared structural editing helpers.
-Keep grammar sources, mode remapping, and indentation settings together.
 #+begin_src emacs-lisp
 (use-package c-ts-mode
   :dash
@@ -881,44 +929,43 @@ If called interactively with no argument, uses the symbol at point as default."
 #+end_src
 
 Configure symbolic substitutions for C and C++ buffers.
-The shared prettification machinery is loaded in Appearance and windows.
 #+begin_src emacs-lisp
 (use-package emacs
   :straight nil
   :config
-  (my/set-ligatures 'c++-ts-mode
-                    :sqrt "std::sqrt"
-                    :infinity "std::limits<float>::max"
-                    :uint "size_t"
-                    ;; Types
-                    :null "nullptr"
-                    :true "true" :false "false"
-                    :int "int" :float "float"
-                    :str "std::string"
-                    :bool "bool"
-                    ;; Flow
-                    :not "!"
-                    :and "&&" :or "||"
-                    :for "for"
-                    :return "return"
-                    :yield "#require"
-                    )
-  (my/set-ligatures 'c-ts-mode
-                    :sqrt "sqrt"
-                    :infinity "INFINITY"
-                    :uint "size_t"
-                    ;; Types
-                    :null "nullptr"
-                    :true "true" :false "false"
-                    :int "int" :float "float"
-                    :bool "bool"
-                    ;; Flow
-                    :not "!"
-                    :and "&&" :or "||"
-                    :for "for"
-                    :return "return"
-                    :yield "#require"
-                    ))
+  (my/prettify-set c++-ts-mode
+    ("std::sqrt"               sqrt)
+    ("std::limits<float>::max" infinity)
+    ("size_t"                  natural)
+    ("nullptr"                 null)
+    ("true"                    true)
+    ("false"                   false)
+    ("int"                     integer)
+    ("float"                   real)
+    ("std::string"             string)
+    ("bool"                    boolean)
+    ("!"                       not)
+    ("&&"                      and)
+    ("||"                      or)
+    ("for"                     for)
+    ("return"                  return)
+    ("#require"                yield))
+  (my/prettify-set c-ts-mode
+    ("sqrt"     sqrt)
+    ("INFINITY" infinity)
+    ("size_t"   natural)
+    ("nullptr"  null)
+    ("true"     true)
+    ("false"    false)
+    ("int"      integer)
+    ("float"    real)
+    ("bool"     boolean)
+    ("!"        not)
+    ("&&"       and)
+    ("||"       or)
+    ("for"      for)
+    ("return"   return)
+    ("#require" yield)))
 #+end_src
 
 **** Source/header creation
@@ -959,14 +1006,15 @@ For C++ headers, carry the enclosing namespace into the generated file.
 
 *** Haskell
 
-Install the Haskell major mode.
-Optional Dante support remains in the inactive experiments section.
+Install Haskell mode and recover missing or exited GHCi sessions on load/reload.
+Recovery drops commands left over from a dead process.
 #+begin_src emacs-lisp
-(use-package haskell-mode)
+(use-package haskell-mode
+  :config
+  (require 'my-haskell-workflow))
 #+end_src
 
 Search Hoogle from Emacs using Consult.
-Keep the upstream recipe and lookup binding next to the integration.
 #+begin_src emacs-lisp
 (use-package consult-hoogle
   :straight `(:host nil
@@ -975,27 +1023,27 @@ Keep the upstream recipe and lookup binding next to the integration.
   :bind ("C-h h" . consult-hoogle))
 #+end_src
 
-Define Haskell symbol substitutions using the shared ligature helpers.
-The rules target =haskell-mode=, which is the active Haskell major mode.
+Define Haskell symbol substitutions using ordinary prettification entries.
+Use =∘= for standalone composition dots; keep qualified names such as =Data.List= literal.
+Size it with =my/haskell-composition-face=; adjust alignment with =my/haskell-composition-raise=.
 #+begin_src emacs-lisp
 (use-package emacs
   :straight nil
 
   :config
-  (my/set-ligatures 'haskell-mode
-                    :composition "."
-                    :to "->"
-                    :from "<-"
-                    :int "Int"
-                    :float "Double"
-                    :bool "Bool"
-                    ))
+  (add-hook 'haskell-mode-hook #'my/haskell-prettify-setup)
+  (my/prettify-set haskell-mode
+    ("."      composition)
+    ("->"     arrow)
+    ("<-"     left-arrow)
+    ("Int"    integer)
+    ("Double" real)
+    ("Bool"   boolean)))
 #+end_src
 
 *** Lean
 
 Install Nael for Lean support.
-Further Lean workflow configuration can live in this section.
 #+begin_src emacs-lisp
 (use-package nael)
 #+end_src
@@ -1003,7 +1051,7 @@ Further Lean workflow configuration can live in this section.
 *** Common Lisp
 
 Use SLY for Common Lisp interaction with the configured SBCL executable.
-Retain the existing SBCL dynamic-space allocation.
+Set SBCL's dynamic-space allocation.
 #+begin_src emacs-lisp
 (use-package sly
   :commands sly
@@ -1015,7 +1063,6 @@ Retain the existing SBCL dynamic-space allocation.
 *** Python
 
 Provide Python virtual-environment switching through Pyvenv.
-Project-specific Python tooling can extend this section later.
 #+begin_src emacs-lisp
 (use-package pyvenv
   :commands (pyvenv-activate pyvenv-deactivate pyvenv-workon))
@@ -1058,7 +1105,6 @@ Load Org before applying its settings; package installation is defined only here
 #+end_src
 
 Load the additional Org modules used by the note configuration.
-Keep these extensions separate from task, display, and capture preferences.
 #+begin_src emacs-lisp
 (use-package org-contrib
   :after org)
@@ -1078,8 +1124,7 @@ Use expanded paths so other Org blocks can share the same directory helper.
    ))
 #+end_src
 
-Provide a shared Org path helper and retain the current link-opening behavior.
-The helper is available to future capture and export configurations.
+Provide a shared Org path helper.
 #+begin_src emacs-lisp
 (with-eval-after-load 'org
   (defun my/org-directory-file (path)
@@ -1090,26 +1135,144 @@ The helper is available to future capture and export configurations.
 
 ** Tasks, agenda, and capture
 
+*** Everyday workflow
+
+Project tasks live in =task.org= at the repository root; general tasks can stay
+in any Roam node or in =inbox.org= under the Roam directory. No date is required.
+
+| Key | Action |
+|-----+--------|
+| =C-x p C= | Explicit project task capture; select a project when outside one |
+| =C-c n t= | Task in current or selected Roam node, regardless of project context |
+| =C-c n c i= | General inbox task, from anywhere |
+| =C-c n c p= | Project TODO; shown only when a project is available |
+| =C-c a= | Standard Org agenda menu |
+| =C-c a o= | Overview: week and all open tasks across projects, Roam, and legacy files |
+| =C-c a f= | Focus: today's agenda and NEXT actions, sorted by category |
+| =C-c a r= | Review: inbox, undecided TODOs, and waiting or deferred work |
+| =C-c a p= | Current or selected project's overview |
+| =C-x p a= | Current or selected project's overview |
+| =C-x p t= | Open the project's task file |
+| =C-x p n= | Open or create the project's Roam note |
+| =C-c n P= | Associate an existing Roam note with a project |
+
+Finish capture with =C-c C-c=, or cancel with =C-c C-k=. In an overview, =g=
+discovers new task sources and refreshes the view; =RET= visits the task.
+Use =NEXT= for actionable work and =WAIT= for dependencies; unscheduled TODOs
+remain visible. In the agenda menu, =a= shows just the calendar and =t= just TODOs.
+
+During a review, process the inbox and choose a few =NEXT= actions; check =WAIT=
+for follow-ups and keep deferred work in =HOLD=, =IDEA=, or =DISSOLVE=.
+Schedule work when you intend to start it; use deadlines for real due dates.
+Focus shows every =NEXT= action, including unscheduled ones. The full overview
+remains the inventory of all open work, and the project view separates states.
+
+In an agenda, =TAB= previews the source, =t= changes state, =C-c C-s= schedules,
+and =C-c C-d= sets a deadline. Use =/= to filter, or =m= then =B= for bulk actions.
+
+A project note's file-level =PROJECT_ROOT= property gives project.el repository
+context. Capture can target the repository, current node, or inbox.
+Use =C-c n T= to add Roam tags.
+
+The overview discovers =task.org= and =tasks.org= in remembered projects and
+linked project notes, plus legacy task files and Roam TODOs.
+Set =my/task-extra-files= for additional sources.
+
 *** Agenda and task states
 
-Build the agenda from the task file and include the personal diary.
-Keep agenda layout settings alongside the files they affect.
+Discover project task files, Roam TODOs, and legacy task files whenever the agenda opens.
+Include unscheduled work in the overview.
 #+begin_src emacs-lisp
+(require 'my-org-workflow)
 (with-eval-after-load 'org
-  (setopt
-   org-agenda-files '("~/org/todos.org")
-   org-agenda-include-diary t
-   diary-file "~/org/diary"
-   org-agenda-tags-column 0
-   ))
+  (setopt org-agenda-include-diary t
+          diary-file "~/org/diary"
+          org-agenda-tags-column 0))
+(advice-add 'org-agenda :before #'my/task-refresh-agenda)
+(keymap-global-set "C-c a" #'org-agenda)
+#+end_src
+
+Register the complete inventory in Org's standard custom agenda menu.
+Use Org's normal refresh command, rediscovering task files on each rebuild.
+#+begin_src emacs-lisp
+(org-add-agenda-custom-command
+ '("o" "Overview: week and all open tasks"
+   ((agenda "" ((org-agenda-span 7)))
+    (alltodo "" ((org-agenda-overriding-header "All open tasks")
+                 (org-agenda-sorting-strategy '(category-keep todo-state-up priority-down)))))
+   ((org-agenda-files (my/task-agenda-files))
+    (org-agenda-buffer-name "*Task Overview*"))))
+#+end_src
+
+Focus on today's calendar and NEXT actions without hiding unscheduled next steps.
+Keep categories together and higher-priority actions first within each category.
+#+begin_src emacs-lisp
+(org-add-agenda-custom-command
+ '("f" "Focus: today and next actions"
+   ((agenda "" ((org-agenda-span 1)
+                (org-agenda-start-day "+0d")
+                (org-agenda-overriding-header "Today")))
+    (todo "NEXT" ((org-agenda-overriding-header "Next actions")
+                  (org-agenda-sorting-strategy '(category-keep priority-down)))))
+   ((org-agenda-files (my/task-agenda-files))
+    (org-agenda-buffer-name "*Task Focus*"))))
+#+end_src
+
+Review the inbox, undecided tasks, and waiting or deferred work in separate blocks.
+Inbox entries appear once; completing a task removes it from the review.
+#+begin_src emacs-lisp
+(org-add-agenda-custom-command
+ '("r" "Review: inbox, decisions, and waiting"
+   ((alltodo "" ((org-agenda-overriding-header "Inbox — clarify and place")
+                 (org-agenda-skip-function #'my/task-skip-outside-inbox)))
+    (todo "TODO" ((org-agenda-overriding-header "TODO — choose next actions")
+                  (org-agenda-skip-function #'my/task-skip-inbox)))
+    (todo "WAIT" ((org-agenda-overriding-header "Waiting — check follow-ups")
+                  (org-agenda-skip-function #'my/task-skip-inbox)))
+    (todo "HOLD|IDEA|DISSOLVE" ((org-agenda-overriding-header "Deferred — reconsider")
+                                (org-agenda-skip-function #'my/task-skip-inbox))))
+   ((org-agenda-files (my/task-agenda-files))
+    (org-agenda-sorting-strategy '(category-keep priority-down))
+    (org-agenda-buffer-name "*Task Review*"))))
+#+end_src
+
+Separate project next actions, backlog, and waiting work below its weekly calendar.
+The project helper applies the same repository restriction to every block and refresh.
+#+begin_src emacs-lisp
+(setq my/task-project-agenda-blocks
+      '((agenda "" ((org-agenda-span 7)))
+        (todo "NEXT" ((org-agenda-overriding-header "Next actions")))
+        (todo "TODO" ((org-agenda-overriding-header "Backlog")))
+        (todo "WAIT" ((org-agenda-overriding-header "Waiting")))
+        (todo "HOLD|IDEA|DISSOLVE" ((org-agenda-overriding-header "Deferred")))))
+(org-add-agenda-custom-command
+ '("p" "Project: week, next actions, and backlog" my/project-task-agenda ""))
+#+end_src
+
+Keep agenda rows aligned, metadata compact, and section boundaries easy to scan.
+Use buffer-local fonts and spacing.
+#+begin_src emacs-lisp
+(add-hook 'org-agenda-mode-hook #'my/task-agenda-appearance)
+(setopt org-agenda-block-separator "────────────────────────"
+        org-agenda-prefix-format
+        '((agenda . " %-16:c%?-12t% s")
+          (todo . " %-16:c")
+          (tags . " %-16:c")
+          (search . " %-16:c"))
+        org-agenda-remove-times-when-in-prefix t)
+(custom-set-faces
+ '(org-agenda-structure ((t (:inherit font-lock-function-name-face :weight bold :height 1.1))))
+ '(org-agenda-date ((t (:inherit font-lock-comment-face :weight bold))))
+ '(org-agenda-date-today ((t (:inherit org-agenda-date :foreground unspecified :weight bold :underline t))))
+ '(org-agenda-done ((t (:inherit shadow)))))
 #+end_src
 
 Define task states and the transitions that record timestamps or notes.
-Capture templates below create entries using this shared task vocabulary.
 #+begin_src emacs-lisp
 (setq org-todo-keywords
       '((sequence
          "TODO(t)"
+         "NEXT(n)"
          "WAIT(w@/!)"
          "HOLD(h@/!/)"
          "IDEA(i)"
@@ -1119,28 +1282,62 @@ Capture templates below create entries using this shared task vocabulary.
          "KILL(k@/!)")))
 #+end_src
 
+Distinguish next actions and waiting work with theme-aware faces shared with Org Modern.
+Deferred states stay subdued, while Org's existing warning face highlights overdue work.
+#+begin_src emacs-lisp
+(setopt org-todo-keyword-faces
+        '(("NEXT" . (:inherit success :weight bold))
+          ("WAIT" . (:inherit warning))
+          ("HOLD" . (:inherit shadow))
+          ("IDEA" . (:inherit shadow))
+          ("DISSOLVE" . (:inherit shadow))
+          ("KILL" . (:inherit shadow))))
+#+end_src
+
 *** Capture templates
 
-Keep every active capture template together, including university homework.
-The file-selection implementation lives in [[file:lisp/my-org-capture.el][my-org-capture.el]] and protects existing buffers.
+Capture to the current project, current Roam node, or Roam inbox without requiring a date.
+The project TODO choice appears only in project context; node/inbox capture stays available.
 #+begin_src emacs-lisp
 (require 'my-org-capture)
-
 (setq org-capture-templates
-      '(("t" "Todo" entry (file+headline "~/org/todos.org" "Todos")
-         "* TODO %?\n  %i\n  %a")
-        ("T" "Task" entry (file+headline "~/org/todos.org" "Tasks")
-         "* TODO %?\nDEADLINE: %^{deadline}t\n  %i\n")
-        ("p" "Project Idea" entry (file "~/org/ideas.org") "*  %^{Title} %t\n%?")
-        ("a" "Question" entry (file "~/org/questions.org") "* TODO %^{Question} %T\n%?")
-        ("h" "Homework" plain (function my/ha-file-for-class) "")
-        ))
+      '(("t" "Task: project / current node / inbox" entry
+         (function my/task-context-target)
+         "* TODO %?\n%a\n%i\n" :empty-lines 1)
+        ("p" "Project TODO" entry
+         (function my/task-project-target)
+         "* TODO %?\n%a\n%i\n" :empty-lines 1)
+        ("r" "Task in current or selected Roam node" entry
+         (function my/task-roam-target)
+         "* TODO %?\n%a\n%i\n" :empty-lines 1)
+        ("i" "Task in Roam inbox" entry
+         (function my/task-inbox-target)
+         "* TODO %?\n%a\n%i\n" :empty-lines 1)
+        ("h" "Homework" plain (function my/ha-file-for-class) "")))
+(setq org-capture-templates-contexts
+      '(("p" (my/task-project-context-p))))
+#+end_src
+
+*** Project context and navigation
+
+Associate a file-level Roam project node with PROJECT_ROOT, while tasks live in the repository.
+The project switch menu exposes notes, task files, capture, and a project-filtered overview.
+#+begin_src emacs-lisp
+(add-hook 'project-find-functions #'my/project-from-roam)
+(keymap-set project-prefix-map "n" #'my/project-note)
+(keymap-set project-prefix-map "t" #'my/project-tasks)
+(keymap-set project-prefix-map "a" #'my/project-task-overview)
+(keymap-set project-prefix-map "C" #'my/project-task-capture)
+(dolist (entry '((my/project-note "Notes" ?n)
+                 (my/project-tasks "Tasks" ?t)
+                 (my/project-task-overview "Task overview" ?a)))
+  (when (listp project-switch-commands)
+    (add-to-list 'project-switch-commands entry t)))
 #+end_src
 
 ** Editing commands
 
 Configure heading-aware movement and insertion in Org buffers.
-These editing preferences are independent of fonts and visual presentation.
 #+begin_src emacs-lisp
 (with-eval-after-load 'org
   (setopt
@@ -1166,7 +1363,6 @@ Release Org’s =C-j= so the general join-line shortcut remains available.
 *** Document display
 
 Hide markup while keeping headings, tags, and mathematical entities readable.
-These settings change document presentation without changing the source text.
 #+begin_src emacs-lisp
 (with-eval-after-load 'org
   (setopt
@@ -1227,6 +1423,7 @@ Use explicit buffer hooks so Consult can enable the same local presentation.
   :custom
   (org-modern-hide-stars nil)
   (org-modern-table t)
+  (org-modern-todo-faces org-todo-keyword-faces)
   :hook
   (org-mode . org-modern-mode)
   (org-agenda-finalize . org-modern-agenda)
@@ -1273,7 +1470,7 @@ Restore the previous text scale when leaving the centered writing layout.
 ** Links and images
 
 Configure link previews, remote-image caching, image size, and alignment.
-Retain the existing trusted-resource pattern for remote document assets.
+Set trusted resources for remote images.
 #+begin_src emacs-lisp
 (with-eval-after-load 'org
   (setopt
@@ -1290,7 +1487,6 @@ Retain the existing trusted-resource pattern for remote document assets.
 *** Editing and PDF viewing
 
 Provide AUCTeX and CDLaTeX input, with PDF Tools as the PDF viewer.
-These editing integrations are separate from inline previews and document export.
 #+begin_src emacs-lisp
 (use-package auctex)
 (use-package tex
@@ -1306,6 +1502,54 @@ These editing integrations are separate from inline previews and document export
 #+end_src
 
 *** Inline previews
+
+**** Code comments
+
+Preview comment equations automatically in programming buffers, e.g. =\(\Delta x < \epsilon\)=.
+Edit [[file:latex/preview-master.tex][preview-master.tex]] for shared packages/macros; toggle with =M-x preview-auto-mode=.
+#+begin_src emacs-lisp
+(defun my/latex-comment-preview-p ()
+  "Check comment syntax without disturbing preview-auto's delimiter match."
+  (save-excursion
+    (save-match-data (nth 4 (syntax-ppss)))))
+
+(defun my/latex-comment-preview-setup ()
+  "Enable comment previews with a cached copy of the shared TeX preamble."
+  (interactive)
+  (require 'preview-auto)
+  (unless (and (local-variable-p 'TeX-master) (stringp TeX-master))
+    (let* ((directory
+            (expand-file-name
+             (concat ".cache/latex-comments/"
+                     (secure-hash 'sha1 (or buffer-file-name (buffer-name))) "/")
+             user-emacs-directory))
+           (master (expand-file-name "master.tex" directory)))
+      (make-directory directory t)
+      (copy-file (expand-file-name "latex/preview-master.tex" user-emacs-directory)
+                 master t)
+      (setq-local TeX-master master)))
+  (setq-local preview-protect-point t
+              preview-auto-cache-preamble nil
+              preview-auto-check-function #'my/latex-comment-preview-p
+              preview-locating-previews-message nil
+              preview-visibility-style 'off-point
+              preview-keep-stale-images nil
+              preview-LaTeX-command-replacements '(preview-LaTeX-disable-pdfoutput))
+  (preview-auto-mode 1))
+
+(defun my/latex-comment-preview-auto-enable ()
+  "Start comment previews in programming modes other than TeX."
+  (unless (derived-mode-p 'tex-mode)
+    (my/latex-comment-preview-setup)))
+
+(use-package preview-auto
+  :straight (:host github :repo "ultronozm/preview-auto.el")
+  :commands preview-auto-mode
+  :hook (prog-mode . my/latex-comment-preview-auto-enable)
+  :custom (preview-auto-interval 0.3))
+#+end_src
+
+**** Org fragments
 
 Enable automatic LaTeX previews and keep their cache in temporary storage.
 Highlight LaTeX fragments and related syntax in the surrounding Org source.
@@ -1328,7 +1572,7 @@ The matching Org version is selected in Package source and extensions.
 *** Export
 
 Enable the existing export backends, including Beamer and man pages.
-Keep the LaTeX package list explicit and separate from preview configuration.
+Set the LaTeX export packages.
 #+begin_src emacs-lisp
 (with-eval-after-load 'org
   (setopt
@@ -1354,7 +1598,7 @@ Preserve zero extra indentation when entering or leaving the source editor.
 
 *** Babel execution
 
-Load the enabled Babel backends and retain execution without confirmation prompts.
+Load Babel backends and run blocks without confirmation prompts.
 Configure PlantUML and refresh inline images after a block finishes.
 #+begin_src emacs-lisp
 (setq org-confirm-babel-evaluate nil)
@@ -1387,7 +1631,9 @@ Load it after Org so synchronization and its command map have explicit dependenc
 
     "r" #'org-roam-buffer-toggle
 
-    "t" #'org-roam-tag-add
+    "t" #'my/roam-task-capture
+    "T" #'org-roam-tag-add
+    "P" #'my/project-link-note
     "a" #'org-roam-alias-add
 
     ;;"C" #'org-roam-capture ;; redundent?
@@ -1410,7 +1656,7 @@ Load it after Org so synchronization and its command map have explicit dependenc
 *** Completion display
 
 Display the file and heading ancestry of each Roam completion candidate.
-These methods are adapted from Doom Emacs and only affect the candidate label.
+Label formatting is adapted from Doom Emacs.
 #+begin_src emacs-lisp
 (with-eval-after-load 'org-roam      ;; Stolen code from doom emacs
   (cl-defmethod org-roam-node-doom-filetitle ((node org-roam-node))
@@ -1487,7 +1733,7 @@ Create these bindings only after both the Roam map and Consult are available.
 *** File preview appearance
 
 Allow lightweight Org appearance hooks while Consult previews files.
-Keep preview-only policy separate from the normal Org and Roam activation hooks.
+Enable these hooks during Consult previews.
 #+begin_src emacs-lisp
 (with-eval-after-load 'consult
   (dolist (hook '(org-modern-mode olivetti-mode variable-pitch-mode))
@@ -1497,7 +1743,6 @@ Keep preview-only policy separate from the normal Org and Roam activation hooks.
 ** Anki
 
 Install the configured Org-to-Anki integration after Org.
-Its upstream recipe stays with the note workflow it supports.
 #+begin_src emacs-lisp
 (use-package org-anki
   :after org
@@ -1512,7 +1757,7 @@ Its upstream recipe stays with the note workflow it supports.
 *** GPTel
 
 Keep =C-c RET= as a global send command, including inside Org buffers.
-Use =:bind*= for precedence over mode bindings without a custom emulation mode.
+Use =:bind*= for precedence over mode bindings.
 #+begin_src emacs-lisp
 (use-package gptel
   :custom
@@ -1526,14 +1771,12 @@ Use =:bind*= for precedence over mode bindings without a custom emulation mode.
 ** PDF
 
 Open PDF files with PDF Tools and use normal Isearch inside PDF buffers.
-The existing package declaration and viewing bindings are retained.
 #+begin_src emacs-lisp
 (use-package pdf-tools
   :mode ("\\.pdf\\'" . pdf-view-mode)
   :config
   (define-key pdf-view-mode-map (kbd "C-s") #'isearch-forward)
-  (define-key pdf-view-mode-map (kbd "C-r") #'isearch-backward)
-  :pin manual)
+  (define-key pdf-view-mode-map (kbd "C-r") #'isearch-backward))
                                         ;(use-package org-noter)
 #+end_src
 
@@ -1551,7 +1794,6 @@ Defer loading until the integration is used.
 ** Matrix
 
 Install Ement for Matrix access from Emacs.
-Account and room workflows can be configured here later.
 #+begin_src emacs-lisp
 (use-package ement
   :commands ement-connect)
@@ -1574,8 +1816,7 @@ should interact with the current Phi-search and Avy bindings.
 
 ** Flycheck
 
-Keep Flycheck as an inactive alternative to the current diagnostics setup.
-This block is excluded from tangling by the Experiments subtree.
+Alternative diagnostics with Flycheck.
 #+begin_src emacs-lisp
 (use-package flycheck
 
@@ -1609,8 +1850,7 @@ Its original note requires disabling Corfu's automatic popup mode.
 
 ** Company
 
-Keep Company as an inactive alternative completion interface.
-The active in-buffer completion setup uses Corfu.
+Alternative completion with Company.
 #+begin_src emacs-lisp
 (use-package company
   :config
@@ -1620,8 +1860,7 @@ The active in-buffer completion setup uses Corfu.
 
 ** Tabspaces
 
-Preserve the project workspace and session settings for Tabspaces.
-The entire experiment remains excluded from generated startup code.
+Project workspaces and sessions with Tabspaces.
 #+begin_src emacs-lisp
 (use-package tabspaces
   ;; use this next line only if you also use straight, otherwise ignore it.
@@ -1643,8 +1882,7 @@ The entire experiment remains excluded from generated startup code.
 
 ** LSP
 
-Preserve the alternative LSP client configuration and its command map.
-The active development configuration currently owns Eglot bindings.
+Alternative language-server client and command map.
 #+begin_src emacs-lisp :tangle no
 (use-package lsp-mode
   :custom
@@ -1684,8 +1922,7 @@ The active development configuration currently owns Eglot bindings.
 ;;   (define-key lsp-ui-mode-map [remap xref-find-references] #'lsp-ui-peek-find-references)
 #+end_src
 
-Keep LSP UI's documentation display options with the LSP experiment.
-This block also explicitly disables tangling.
+Documentation display for the LSP experiment.
 #+begin_src emacs-lisp :tangle no
 (use-package lsp-ui
   :custom
@@ -1751,8 +1988,7 @@ Its package recipe and system paths need review before activation.
 
 ** AI coding integrations
 
-Preserve the experimental coding-assistant packages and menu bindings.
-This block explicitly disables tangling in addition to its inactive parent.
+Coding-assistant packages and menu bindings.
 #+begin_src emacs-lisp :tangle no
 (use-package ai-code
   :config
@@ -1767,8 +2003,7 @@ This block explicitly disables tangling in addition to its inactive parent.
 
 ** Org transclusion
 
-Keep Org transclusion as an optional note-writing experiment.
-It is excluded from the active configuration.
+Embed content from other Org files with transclusion.
 #+begin_src emacs-lisp :tangle no
 (use-package org-transclusion)
 #+end_src
@@ -1795,7 +2030,7 @@ The UI remains disabled even though its old command binding is retained.
 
 ** Mathpix
 
-Keep the Mathpix screenshot-to-LaTeX integration as an inactive example.
+Convert screenshots to LaTeX with Mathpix.
 The credential fields are placeholders from the original configuration.
 #+begin_src emacs-lisp
 (use-package mathpix.el
@@ -1824,8 +2059,7 @@ It remains an optional alternative to the active Roam and Consult setup.
 
 ** LaTeX export template
 
-Preserve the custom Beamer template and table-of-contents configuration.
-The university-specific template path remains inactive.
+Custom Beamer template and table of contents.
 #+begin_src emacs-lisp :tangle no
 (use-package emacs
   :straight nil
@@ -1861,31 +2095,29 @@ Review its dependencies before moving it into Development.
                      "-Dsun.zip.disableMemoryMapping=true" "-Xmx4G" "-Xms500m")))
 #+end_src
 
-Preserve Java symbol substitutions beside the inactive Java setup.
-They use the same shared prettification helpers as other languages.
+Symbol substitutions for Java.
 #+begin_src emacs-lisp
 (use-package emacs
   :straight nil
   :config
-  (my/set-ligatures 'java-ts-mode
-                    ;; Types
-                    :null "null"
-                    :true "true" :false "false"
-                    :int "int" :float "float"
-                    :str "String"
-                    :bool "boolean"
-                    ;; Flow
-                    :not "!"
-                    :and "&&" :or "||"
-                    :for "for"
-                    :return "return"
-                    ))
+  (my/prettify-set java-ts-mode
+    ("null"    null)
+    ("true"    true)
+    ("false"   false)
+    ("int"     integer)
+    ("float"   real)
+    ("String"  string)
+    ("boolean" boolean)
+    ("!"       not)
+    ("&&"      and)
+    ("||"      or)
+    ("for"     for)
+    ("return"  return)))
 #+end_src
 
 ** Dante
 
-Keep Dante's Haskell interaction and diagnostic settings for later review.
-The block retains its explicit tangling exclusion.
+Haskell interaction and diagnostics with Dante.
 #+begin_src emacs-lisp :tangle no
 ;; (use-package flymake-flycheck)
 (use-package dante
@@ -1914,8 +2146,7 @@ The block retains its explicit tangling exclusion.
 
 ** Racket
 
-Preserve Racket mode as an optional language integration.
-Move it to Development if activating it later.
+Racket language support.
 #+begin_src emacs-lisp
 (use-package racket-mode)
 #+end_src
@@ -1950,8 +2181,7 @@ Review the grammar-list assignment before enabling this experiment.
 
 ** GhostText
 
-Keep Atomic Chrome available as the GhostText integration experiment.
-It was previously untangled and remains inactive after the reorganization.
+Browser editing through Atomic Chrome and GhostText.
 #+begin_src emacs-lisp
 (use-package atomic-chrome)
 #+end_src

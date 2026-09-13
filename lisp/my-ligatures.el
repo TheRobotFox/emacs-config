@@ -1,208 +1,194 @@
-;;; my-ligatures.el --- Personal configuration helpers -*- lexical-binding: t; -*-
+;;; my-ligatures.el --- Language symbols and optional math notation -*- lexical-binding: t; -*-
 
 ;;; Commentary:
-;; Loaded by config.org; edit this file directly.
+;; Font shaping is configured separately in config.org.
+;; Language tables extend built-in prettification; math notation has its own toggle.
 
 ;;; Code:
-
 (require 'cl-lib)
-(require 'subr-x)
+(require 'prog-mode)
 
-(defvar my/ligatures-extra-symbols
-  '(;; org
-    ;;     :name          "»"
-    ;;     :src_block     "»"
-    ;;     :src_block_end "«"
-    ;;     :quote         "“"
-    ;;     :quote_end     "”"
+(defvar my/pretty-symbols
+  '(
+    (composition . ?∘)
+    (arrow . ?→)
+    (left-arrow . ?←)
 
-    ;; Functional
-    :lambda        "λ"
-    :def           "ƒ"
-    :composition   "○"
-    :map           "↦"
-    :to            "→"
-    :from          "←"
+    (string . ?𝕊)
+    (boolean . ?𝔹)
+    (integer . ?ℤ)
+    (real . ?ℝ)
+    (natural . ?ℕ)
 
-    ;; Types
-    :null          "∅"
-    :true          "⊤"
-    :false         "⊥"
-    :int           "ℤ"
-    :float         "ℝ"
-    :str           "𝕊"
-    :bool          "𝔹"
-    :list          "𝕃"
+    (infinity . ?∞)
+    (sqrt . ?√)
 
-    ;; Flow
-    :not           "¬"
-    :in            "∈"
-    :not-in        "∉"
-    :and           "∧"
-    :or            "∨"
-    :for           "∀"
-    :some          "∃"
-    :return        "⟼"
-    :yield         "⟻"
+    (null . ?∅)
+    (true . ?⊤)
+    (false . ?⊥)
+    (not . ?¬)
+    (and . ?∧)
+    (or . ?∨)
+    (for . ?∀)
+    (return . ?⟼)
+    (yield . ?⟻)
+    (delta . ?Δ)
+    (epsilon . ?ε))
+  "Shared characters for language declarations.
+After editing, re-evaluate the declarations and run `my/prettify-setup'.")
 
-    ;; Other
-    :sqrt          "√"
-    :infinity      "∞"
-    :uint          "ℕ"
-    :union         "⋃"
-    :intersect     "∩"
-    :diff          "∖"
-    :tuple         "⨂"
-    :pipe          "" ;; FIXME: find a non-private char
-    :dot           "•"))
-;; "Maps identifiers to symbols, recognized by `set-ligatures'.
+(defun my/pretty-symbol (name)
+  "Look up NAME in `my/pretty-symbols', reporting unknown names."
+  (or (alist-get name my/pretty-symbols)
+      (error "Unknown pretty symbol: %S" name)))
 
-(defun my/cartesian-product-call (fn l1 l2)
-  (mapcan (lambda (a)
-            (mapcar (lambda (b) (funcall fn a b)) l2))
-          l1))
-(defvar my/fancy-vars
-  (append (mapcar (lambda (character)
-                    (cons (string ?d character)
-                          (list ?Δ '(Br . cl) character)))
-                  (string-to-list "xyzwts"))
-          (my/cartesian-product-call (lambda (character subscript)
-                                       (cons (string character subscript)
-                                             (list character '(Br . cl) subscript)))
-                                     (string-to-list "xyzktw")
-                                     (string-to-list "nik0123456789"))))
+(defmacro my/prettify-set (modes &rest entries)
+  "Declare ENTRIES as (TEXT SYMBOL-NAME) pairs for unquoted MODES.
+MODES is a mode name or list of mode names.  No entries clears their tables."
+  (declare (indent 1))
+  `(my/prettify-register ',modes
+     (list ,@(mapcar
+              (lambda (entry)
+                (pcase entry
+                  (`(,(and text (pred stringp)) ,(and name (pred symbolp)))
+                   `(cons ,text (my/pretty-symbol ',name)))
+                  (_ (error "Expected (TEXT SYMBOL-NAME), got %S" entry))))
+              entries))))
 
-;;; ui/ligatures/autoload/ligatures.el -*- lexical-binding: t; -*-
+(defvar my/prettify-rules nil
+  "Alist of major modes and their ordinary `prettify-symbols-alist' entries.
+Register complete tables with `my/prettify-set'.")
+(defvar-local my/prettify--base nil)
+(defvar-local my/prettify--installed nil)
+(defvar-local my/prettify--initialized nil)
+(defvar my/math-symbols-mode)
 
-;;;###autodef
-(defun my/set-ligatures (modes &rest plist)
-  "Associates string patterns with icons in certain major-modes.
+(defface my/haskell-composition-face
+  '((t (:height 1.4)))
+  "Size of composition symbols."
+  :group 'faces)
 
-  MODES is a major mode symbol or a list of them.
-  PLIST is a property list whose keys must match keys in
-`my/ligatures-extra-symbols', and whose values are strings representing the text
-to be replaced with that symbol.
+(defcustom my/haskell-composition-raise -0.1
+  "Vertical offset for enlarged composition symbols, in character heights.
+Negative values lower the symbol.  Refontify buffers after changing this."
+  :type 'number
+  :group 'faces)
 
-If the car of PLIST is nil, then unset any
-pretty symbols and ligatures previously defined for MODES.
+(defconst my/haskell-composition-keywords
+  '(("\\."
+     (0 (when (get-text-property (match-beginning 0) 'composition)
+          (put-text-property (match-beginning 0) (match-end 0)
+                             'display (list 'raise my/haskell-composition-raise))
+          'my/haskell-composition-face)
+        prepend)))
+  "Apply size after prettification has identified composition operators.")
 
-For example, the rule for emacs-lisp-mode is very simple:
+(defun my/haskell-composition-font-lock-setup ()
+  "Keep composition sizing after prettification, and remove it when disabled."
+  (font-lock-remove-keywords nil my/haskell-composition-keywords)
+  (setq-local font-lock-extra-managed-props
+              (cons 'display (remq 'display font-lock-extra-managed-props)))
+  (when prettify-symbols-mode
+    (font-lock-add-keywords nil my/haskell-composition-keywords 'append))
+  (font-lock-flush))
 
-  (after! elisp-mode
-    (my/set-ligatures \\='emacs-lisp-mode
-      :lambda \"lambda\"))
+(defun my/haskell-prettify-compose-p (start end match)
+  "Keep dots in qualified names, numbers and larger operators literal.
+Prettify standalone dots, retaining the default string/comment checks."
+  (and (prettify-symbols-default-compose-p start end match)
+       (or (not (equal match "."))
+           (not (or (memq (char-syntax (or (char-before start) ?\s)) '(?w ?_ ?. ?\\))
+                    (memq (char-syntax (or (char-after end) ?\s)) '(?w ?_ ?. ?\\)))))))
 
-This will replace any instances of \"lambda\" in emacs-lisp-mode with the symbol
-associated with :lambda in `my/ligatures-extra-symbols'.
+(defun my/haskell-prettify-setup ()
+  "Use Haskell-aware boundaries for symbolic substitutions."
+  (setq-local prettify-symbols-compose-predicate #'my/haskell-prettify-compose-p)
+  (add-hook 'prettify-symbols-mode-hook #'my/haskell-composition-font-lock-setup nil t)
+  (my/haskell-composition-font-lock-setup))
 
-Pretty symbols can be unset by passing `nil':
+(defun my/prettify-register (modes symbols)
+  "Replace the SYMBOLS table for MODES (one mode or a list).
+Nil removes the table.  Re-evaluating a declaration does not append rules.
+Use `my/prettify-setup' to refresh an already open buffer."
+  (dolist (mode (if (listp modes) modes (list modes)))
+    (setf (alist-get mode my/prettify-rules nil t) (copy-tree symbols))))
 
-  (after! rustic
-    (my/set-ligatures \\='rustic-mode nil))
+(defun my/prettify--merge (&rest tables)
+  "Merge TABLES, keeping the first entry for each text string."
+  (let (result)
+    (dolist (entry (apply #'append tables))
+      (unless (assoc (car entry) result)
+        (push entry result)))
+    (nreverse result)))
 
-Note that this will keep all ligatures in `my/ligatures-prog-mode-list' active, as
-`emacs-lisp-mode' is derived from `prog-mode'."
-  (declare (indent defun))
-  (if (null (car-safe plist))
-      (dolist (mode (ensure-list modes))
-        (setf (alist-get mode my/ligatures-extra-alist nil t) nil))
-    (let ((results))
-      (while plist
-        (let ((key (pop plist)))
-          (when-let (char (plist-get my/ligatures-extra-symbols key))
-            (push (cons (pop plist) char) results))))
-      (dolist (mode (ensure-list modes))
-        (setf (alist-get mode my/ligatures-extra-alist)
-              (if-let* ((old-results (alist-get mode my/ligatures-extra-alist)))
-                  (dolist (cell results old-results)
-                    (setf (alist-get (car cell) old-results) (cdr cell)))
-                results))))))
+(defvar my/math-rules nil
+  "Mode-specific notation enabled by `my/math-symbols-mode'.")
 
-;;;###autodef
-(defun my/set-font-ligatures (modes &rest ligatures)
-  "Associates string patterns with ligatures in certain major-modes.
+(defun my/math-register (modes bases indices deltas symbols)
+  "Register subscript BASES, INDICES, DELTAS and explicit SYMBOLS for MODES.
+Each base is a single-character string; source names use x_i and d_x."
+  (let ((rules
+         (append symbols
+                 (cl-loop for base in deltas
+                          unless (and (stringp base) (= (length base) 1))
+                          do (error "Delta base must be one character: %S" base)
+                          collect (cons (concat "d_" base)
+                                        (list (my/pretty-symbol 'delta) '(Br . Bl)
+                                              (aref base 0))))
+                 (cl-loop for base in bases
+                          unless (and (stringp base) (= (length base) 1))
+                          do (error "Subscript base must be one character: %S" base)
+                          append (cl-loop for index across indices
+                                          collect (cons (concat base "_" (string index))
+                                                        (list (aref base 0) '(Br . cl) index)))))))
+    (dolist (mode (ensure-list modes))
+      (setf (alist-get mode my/math-rules nil t) rules))))
 
-  MODES is a major mode symbol or a list of them.
-  LIGATURES is a list of ligatures that should be handled by the font,
-    like \"==\" or \"-->\". LIGATURES is a list of strings.
+(cl-defmacro my/math-set (modes &key subscripts (indices "ijkn0123456789") deltas symbols)
+  "Declare optional notation for unquoted MODES.
+SUBSCRIPTS lists single-character base strings; INDICES lists allowed suffixes.
+DELTAS lists variables whose d_ prefix should display as delta.
+SYMBOLS uses the same (TEXT SYMBOL-NAME) pairs as `my/prettify-set'."
+  (declare (indent 1))
+  `(my/math-register ',modes ',subscripts ,indices ',deltas
+     ,(caddr (macroexpand `(my/prettify-set ,modes ,@symbols)))))
 
-For example, the rule for emacs-lisp-mode is very simple:
+(defun my/prettify--mode-rules (table)
+  "Merge TABLE entries from the current mode through its parents."
+  (apply #'my/prettify--merge
+         (mapcar (lambda (mode) (alist-get mode table))
+                 (derived-mode-all-parents major-mode))))
 
-  (my/set-font-ligatures \\='emacs-lisp-mode \"->\")
+(defun my/prettify-setup (&optional enable)
+  "Refresh symbols, preserving major-mode defaults and the user's toggle.
+Precedence is exact mode, nearest parent, math notation, then existing defaults.
+Enable prettification on first setup when rules apply, or when ENABLE is non-nil."
+  (interactive)
+  (let* ((rules (my/prettify--mode-rules my/prettify-rules))
+         (math (and my/math-symbols-mode (my/prettify--mode-rules my/math-rules)))
+         (active (or prettify-symbols-mode enable
+                     (and (not my/prettify--initialized) (or rules math)))))
+    ;; Remove only entries we installed; retain later additions by packages.
+    (setq my/prettify--base
+          (my/prettify--merge
+           (cl-remove-if (lambda (entry) (memq entry my/prettify--installed))
+                         prettify-symbols-alist)
+           my/prettify--base))
+    (when prettify-symbols-mode (prettify-symbols-mode -1))
+    (setq-local prettify-symbols-alist
+                (my/prettify--merge rules math my/prettify--base))
+    (setq my/prettify--installed
+          (cl-remove-if (lambda (entry) (memq entry my/prettify--base))
+                        prettify-symbols-alist)
+          my/prettify--initialized t)
+    (when active (prettify-symbols-mode 1))))
 
-This will ligate \"->\" into the arrow of choice according to your font.
-
-All font ligatures for emacs-lisp-mode can be unset with:
-
-  (my/set-font-ligatures \\='emacs-lisp-mode nil)
-
-However, ligatures for any parent modes (like `prog-mode') will still be in
-effect, as `emacs-lisp-mode' is derived from `prog-mode'."
-  (declare (indent defun))
-  (with-eval-after-load 'ligature
-    (if (or (null ligatures) (equal ligatures '(nil)))
-        (dolist (table ligature-composition-table)
-          (let ((modes (ensure-list modes))
-                (tmodes (car table)))
-            (cond ((and (listp tmodes) (cl-intersection modes tmodes))
-                   (let ((tmodes (cl-nset-difference tmodes modes)))
-                     (setq ligature-composition-table
-                           (if tmodes
-                               (cons tmodes (cdr table))
-                             (delete table ligature-composition-table)))))
-                  ((memq tmodes modes)
-                   (setq ligature-composition-table (delete table ligature-composition-table))))))
-      (ligature-set-ligatures modes ligatures))))
-
-(defvar my/ligatures-extra-alist '((t))
-  "A map of major modes to symbol lists (for `prettify-symbols-alist').
-
-To configure this variable, use `my/set-ligatures'.")
-
-(defvar my/ligatures-extras-in-modes t
-  "List of major modes where extra ligatures should be enabled.
-
-Extra ligatures are mode-specific substituions, defined in
-`my/ligatures-extra-symbols' and assigned with `my/set-ligatures'. This variable
-controls where these are enabled.
-
-  If t, enable it everywhere (except `fundamental-mode').
-  If the first element is not, enable it in any mode besides what is listed.
-  If nil, don't enable these extra ligatures anywhere (though it's more
-efficient to remove the `+extra' flag from the :ui ligatures module instead).")
-
-(defun my/ligatures--enable-p (modes)
-  "Return t if ligatures should be enabled in this buffer depending on MODES."
-  (unless (eq major-mode 'fundamental-mode)
-    (or (eq modes t)
-        (if (eq (car modes) 'not)
-            (not (apply #'derived-mode-p (cdr modes)))
-          (apply #'derived-mode-p modes)))))
-
-(defun my/ligatures-init-extra-symbols-h ()
-  "Set up `prettify-symbols-mode' for the current buffer.
-
-Overwrites `prettify-symbols-alist' and activates `prettify-symbols-mode' if
-(and only if) there is an associated entry for the current major mode (or a
-parent mode) in `my/ligatures-extra-alist' AND the current mode (or a parent mode)
-isn't disabled in `my/ligatures-extras-in-modes'."
-
-  (when-let*
-      (((my/ligatures--enable-p my/ligatures-extras-in-modes))
-       (symbols
-        (if-let* ((symbols (assq major-mode my/ligatures-extra-alist)))
-            (cdr symbols)
-          (cl-loop for (mode . symbols) in my/ligatures-extra-alist
-                   if (derived-mode-p mode)
-                   return symbols))))
-    (setq prettify-symbols-alist
-          (append symbols
-                  ;; Don't overwrite global defaults
-                  my/fancy-vars
-                  (default-value 'prettify-symbols-alist)))
-    (when (bound-and-true-p prettify-symbols-mode)
-      (prettify-symbols-mode -1))
-    (prettify-symbols-mode +1)))
+(define-minor-mode my/math-symbols-mode
+  "Toggle the notation declared by `my/math-set' in this buffer.
+For a project, enable this in its .dir-locals.el via a mode entry.
+The ordinary `prettify-symbols-mode' command toggles all symbol display."
+  :lighter " Math"
+  (my/prettify-setup my/math-symbols-mode))
 
 (provide 'my-ligatures)
 ;;; my-ligatures.el ends here
