@@ -678,6 +678,17 @@ These global bindings complement the multiple-cursors editing workflow.
 
 ** Documentation
 
+Browse downloaded API documentation with =C-h D=; C/C++ buffers select their reference automatically.
+Use =C-u C-h D= to choose documents, and =M-x devdocs-install= to add libraries.
+#+begin_src emacs-lisp
+(use-package devdocs
+  :bind ("C-h D" . devdocs-lookup)
+  :commands (devdocs-install devdocs-peruse)
+  :hook
+  ((c-mode c-ts-mode) . (lambda () (setq-local devdocs-current-docs '("c"))))
+  ((c++-mode c++-ts-mode) . (lambda () (setq-local devdocs-current-docs '("cpp")))))
+#+end_src
+
 Look up installed Dash docsets using Consult and display documentation in EWW.
 Seed documentation searches with the symbol at point.
 #+begin_src emacs-lisp
@@ -696,10 +707,10 @@ Seed documentation searches with the symbol at point.
 ** expand-region
 
 Expand the active region through progressively larger syntactic units.
-The command is bound to =C-==.
+Use =C-== to expand and =C-M-== to contract; parsed buffers use the Tree-sitter helpers.
 #+begin_src emacs-lisp
 (use-package expand-region
-  :bind ("C-=" . er/expand-region))
+  :commands (er/expand-region er/contract-region))
 #+end_src
 
 ** embrace
@@ -827,35 +838,16 @@ Individual language hooks decide when to start a language server.
 
 ** Tree-sitter helpers
 
-Load structural editing helpers from [[file:lisp/my-treesit.el][my-treesit.el]] after multiple-cursors.
+Keep native Tree-sitter tools in [[file:lisp/my-treesit.el][my-treesit.el]]; inspect syntax with =M-x treesit-explore-mode=.
+=C-c s s= resumes structural navigation across regions or cursors; =C-== expands and =C-M-== restores the previous selection set.
+=M-p/n= select siblings, =M-u/d= parent/child, =M-P/N= use native transposition. Selections end at point; shared parents and duplicates merge.
+=C-c s f t/s= filters descendants by type or matching siblings; filters can be chained. Conflicting transpositions are rejected before editing.
+Typing uses multiple-cursors normally and clears selection history; ordinary movement or =C-g= exits navigation. Native replacement and =C-c l= remain available.
 #+begin_src emacs-lisp
-(use-package ts-movement
-  :straight `(ts-movement :host nil
-                          :repo "https://github.com/haritkapadia/ts-movement")
-  :after multiple-cursors
-  :config
-  (require 'my-treesit)
-  (defvar-keymap  tsm-repeat-map
-    :repeat (:enter () :exit (tsm/node-mark tsm/mc/mark-all-overlays))
-    "C-n" #'my/tsm/transpose-forward
-    "C-p" #'my/tsm/transpose-backward
-    "d" #'tsm/delete-overlay-at-point
-    "D" #'tsm/clear-overlays-of-type
-    "C-b" #'tsm/backward-overlay
-    "C-f" #'tsm/forward-overlay
-    "b" #'tsm/node-prev
-    "f" #'tsm/node-next
-    "p" #'tsm/node-parent
-    "n" #'tsm/node-child
-    "N" #'tsm/node-children
-    "s" #'tsm/node-children-of-type
-    "a" #'tsm/node-start
-    "e" #'tsm/node-end
-    "m" #'tsm/node-mark
-    "c" #'tsm/mc/mark-all-overlays)
-  (global-set-key (kbd "C-c m") tsm-repeat-map)
-  (global-set-key (kbd "C-c m C") 'tsm/clear-overlays)
-  (push 'tsm/mc/mark-all-overlays mc--default-cmds-to-run-once))
+(require 'my-treesit)
+(global-set-key (kbd "C-=") #'my/treesit-expand)
+(global-set-key (kbd "C-M-=") #'my/treesit-contract)
+(global-set-key (kbd "C-c s") my/treesit-action-map)
 #+end_src
 
 ** Languages
@@ -1041,11 +1033,16 @@ Size it with =my/haskell-composition-face=; adjust alignment with =my/haskell-co
     ("Bool"   boolean)))
 #+end_src
 
-*** Lean
+*** Lean 4
 
-Install Nael for Lean support.
+Use Nael with Eglot for Lean 4 completion, diagnostics and proof goals; =M-o d= opens the goal documentation.
+Unicode abbreviations expand on space; =C-c C-k= explains input and =C-c C-c= runs =lake build=.
 #+begin_src emacs-lisp
-(use-package nael)
+(use-package nael
+  :mode ("\\.lean\\'" . nael-mode)
+  :hook
+  (nael-mode . abbrev-mode)
+  (nael-mode . eglot-ensure))
 #+end_src
 
 *** Common Lisp
