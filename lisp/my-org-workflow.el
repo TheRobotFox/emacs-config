@@ -85,7 +85,10 @@ Use FILE, or the visited file, to resolve relative project paths."
                       (with-current-buffer buffer (my/task--buffer-root))
                     (with-temp-buffer
                       (insert-file-contents file)
-                      (delay-mode-hooks (org-mode))
+                      ;; Reading metadata must not render LaTeX, align tables,
+                      ;; or initialize document visibility in every Roam file.
+                      (let ((org-inhibit-startup t))
+                        (delay-mode-hooks (org-mode)))
                       ;; Keep the scratch buffer non-visiting: marking it as
                       ;; FILE would make killing it prompt to save its contents.
                       (my/task--buffer-root file)))))

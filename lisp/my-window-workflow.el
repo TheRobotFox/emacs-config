@@ -23,8 +23,6 @@
 ;; Eldoc refreshes its buffer with `special-mode', which resets local variables.
 (put 'my/popup-project-root 'permanent-local t)
 (defvar eshell-buffer-name)
-(defvar my/popup--side-override nil
-  "Side forced temporarily while moving supporting panes.")
 
 (defun my/popup-documentation-p (buffer)
   "Whether BUFFER contains documentation rather than interactive output."
@@ -55,46 +53,55 @@
                   (window-list nil 'no-mini))
                  (user-error "No editing window available"))))))
 
+(defun my/popup--context ()
+  "Return the editing window and its project root as (WINDOW . ROOT)."
+  (let ((source (my/popup-source-window)))
+    (cons source (with-current-buffer (window-buffer source) (my/popup-root)))))
+
+(defun my/popup--choose-side (wide-p columns existing-side)
+  "Choose a side from WIDE-P, editing COLUMNS, and EXISTING-SIDE."
+  (or existing-side (if (and wide-p (= columns 1)) 'right 'bottom)))
+
 (defun my/popup-side ()
   "Choose a stable side based on the existing supporting area or editing layout."
   (let* ((windows (window-list nil 'no-mini))
          (support (cl-find-if (lambda (win) (window-parameter win 'my/popup-pane)) windows))
          (editors (cl-remove-if (lambda (win) (window-parameter win 'window-side)) windows))
          (columns (delete-dups (mapcar (lambda (win) (car (window-edges win))) editors))))
-    (or my/popup--side-override
-        (and support (window-parameter support 'window-side))
-        (if (and (= (length columns) 1)
-                 (>= (frame-width) my/popup-right-min-width)) 'right 'bottom))))
+    (my/popup--choose-side
+     (>= (frame-width) my/popup-right-min-width)
+     (length columns)
+     (and support (window-parameter support 'window-side)))))
+
+(defun my/popup--display (buffer origin side &optional alist)
+  "Place BUFFER on SIDE with ORIGIN, without changing project association."
+  (or (get-buffer-window buffer (selected-frame))
+      (let ((window
+             (display-buffer-in-side-window
+              buffer
+              (append `((side . ,side)
+                        (slot . ,(if (my/popup-documentation-p buffer) -1 0))
+                        (window-width . ,my/popup-width)
+                        (window-height . ,my/popup-height))
+                      (cl-remove-if
+                       (lambda (entry) (memq (car entry) '(side slot window-width window-height)))
+                       alist)))))
+        (when window
+          (set-window-parameter window 'my/popup-pane t)
+          (set-window-parameter window 'my/popup-origin origin))
+        window)))
 
 (defun my/popup-display (buffer &optional alist)
-  "Display BUFFER in its supporting slot without changing keyboard focus.
-Documentation uses slot -1; processes and other output share slot 0.
-Reuse a visible buffer and preserve placements while supporting panes are open."
-  (let ((root (with-current-buffer (window-buffer (my/popup-source-window))
-                (my/popup-root))))
+  "Display BUFFER without selecting it, preserving its project context.
+Documentation uses slot -1; processes and other output share slot 0."
+  (pcase-let ((`(,source . ,root) (my/popup--context)))
     (with-current-buffer buffer
       (cond ((my/popup-documentation-p buffer)
              (setq-local my/popup-project-root root))
             ((not my/popup-project-root)
              (setq-local my/popup-project-root
-                         (if (my/popup-process-p buffer) (my/popup-root) root))))))
-  (or (get-buffer-window buffer (selected-frame))
-      (let* ((origin (my/popup-source-window))
-             (side (my/popup-side))
-             (window
-              (display-buffer-in-side-window
-               buffer
-               (append `((side . ,side)
-                         (slot . ,(if (my/popup-documentation-p buffer) -1 0))
-                         (window-width . ,my/popup-width)
-                         (window-height . ,my/popup-height))
-                       (cl-remove-if
-                        (lambda (entry) (memq (car entry) '(side slot window-width window-height)))
-                        alist)))))
-        (when window
-          (set-window-parameter window 'my/popup-pane t)
-          (set-window-parameter window 'my/popup-origin origin))
-        window)))
+                         (if (my/popup-process-p buffer) (my/popup-root) root)))))
+    (my/popup--display buffer source (my/popup-side) alist)))
 
 (defun my/popup-select (buffer)
   "Display and select BUFFER's supporting pane."
@@ -126,7 +133,6 @@ Restore the previous layout if the requested side cannot accommodate them."
                             (window-parameter win 'my/popup-origin)
                             (eq win focus)))
                     panes))
-           (my/popup--side-override side)
            completed)
       (unwind-protect
           (progn
@@ -134,12 +140,9 @@ Restore the previous layout if the requested side cannot accommodate them."
             (mapc #'delete-window panes)
             (dolist (state states)
               (pcase-let ((`(,buffer ,start ,point ,hscroll ,origin ,focused) state))
-                (let* ((root (buffer-local-value 'my/popup-project-root buffer))
-                       (window (my/popup-display buffer)))
-                  (with-current-buffer buffer (setq my/popup-project-root root))
+                (let ((window (my/popup--display buffer origin side)))
                   (unless (and window (eq (window-parameter window 'window-side) side))
                     (user-error "No room for supporting panes on the %s" side))
-                  (set-window-parameter window 'my/popup-origin origin)
                   (set-window-start window start t)
                   (set-window-point window point)
                   (set-window-hscroll window hscroll)
@@ -158,16 +161,11 @@ Restore the previous layout if the requested side cannot accommodate them."
                    default-directory))))
     (file-name-as-directory (if (file-remote-p root) root (file-truename root)))))
 
-(defun my/popup-group ()
-  "Use the same project/directory identity for source buffers and their popups."
-  (my/popup-root))
-
 (defun my/popup-eshell ()
   "Select this project's Eshell, creating it on first use.
 Outside a project, use a shell associated with the source directory."
   (interactive)
-  (let* ((source (my/popup-source-window))
-         (root (with-current-buffer (window-buffer source) (my/popup-root)))
+  (let* ((root (cdr (my/popup--context)))
          (existing (cl-find-if
                     (lambda (buf)
                       (with-current-buffer buf
@@ -213,25 +211,23 @@ Outside a project, use a shell associated with the source directory."
   "Select the source's REPL, or choose an existing process in its project.
 Start language runtimes with their normal package commands first."
   (interactive)
-  (let* ((source (my/popup-source-window))
-         (buffer
-          (with-current-buffer (window-buffer source)
-            (or (my/popup--associated-repl)
-                (let* ((root (my/popup-root))
-                       (candidates
-                        (cl-remove-if-not
-                         (lambda (buf)
-                           (and (my/popup-process-p buf)
-                                (with-current-buffer buf
-                                  (and (not (derived-mode-p 'eshell-mode 'shell-mode 'term-mode 'vterm-mode))
-                                       (equal root (my/popup-root))))))
-                         (buffer-list))))
-                  (cond ((null candidates)
-                         (user-error "No project REPL; start one with your language's normal command"))
-                        ((null (cdr candidates)) (car candidates))
-                        (t (get-buffer (completing-read "Project REPL: "
-                                                       (mapcar #'buffer-name candidates) nil t))))))))
-         (root (with-current-buffer (window-buffer source) (my/popup-root))))
+  (pcase-let* ((`(,source . ,root) (my/popup--context))
+               (buffer
+                (with-current-buffer (window-buffer source)
+                  (or (my/popup--associated-repl)
+                      (let ((candidates
+                             (cl-remove-if-not
+                              (lambda (buf)
+                                (and (my/popup-process-p buf)
+                                     (with-current-buffer buf
+                                       (and (not (derived-mode-p 'eshell-mode 'shell-mode 'term-mode 'vterm-mode))
+                                            (equal root (my/popup-root))))))
+                              (buffer-list))))
+                        (cond ((null candidates)
+                               (user-error "No project REPL; start one with your language's normal command"))
+                              ((null (cdr candidates)) (car candidates))
+                              (t (get-buffer (completing-read "Project REPL: "
+                                                              (mapcar #'buffer-name candidates) nil t)))))))))
     (with-current-buffer buffer (setq-local my/popup-project-root root))
     (my/popup-select buffer)))
 

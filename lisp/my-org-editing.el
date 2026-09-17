@@ -8,6 +8,44 @@
 (require 'org)
 (require 'org-element)
 (require 'org-list)
+(require 'org-fold)
+(require 'ox)
+
+(defun my/org--block-fold-state (element)
+  "Return `hide', `off', or nil for ELEMENT's initial folding."
+  (pcase (org-export-read-attribute :attr_org element :fold)
+    ("yes" 'hide)
+    ("no" 'off)
+    (_ (when (and (eq (org-element-type element) 'src-block)
+                  (member (org-element-property :language element)
+                          '("d2" "dot" "plantuml")))
+         'hide))))
+
+(defun my/org-fold-note-blocks ()
+  "Fold D2, Dot and PlantUML blocks, honoring per-block ATTR_ORG overrides.
+Put #+ATTR_ORG: :fold yes or :fold no immediately above any block to
+override its initial visibility.  Other blocks are left alone by default."
+  (interactive)
+  (org-with-wide-buffer
+   (org-block-map
+    (lambda ()
+      (let* ((element (org-element-at-point))
+             (state (my/org--block-fold-state element)))
+        (when state (org-fold-hide-block-toggle state nil element)))))))
+
+(defun my/org--fold-note-blocks-on-display (window)
+  "Apply block folding once when this buffer is first displayed in WINDOW."
+  ;; Window change hooks can also run in the buffer being switched away from.
+  (when (eq (window-buffer window) (current-buffer))
+    (my/org-fold-note-blocks)
+    (remove-hook 'window-buffer-change-functions
+                 #'my/org--fold-note-blocks-on-display t)))
+
+(defun my/org-defer-note-folding ()
+  "Arrange block folding on first display, including agenda-loaded notes.
+Do not scan undisplayed agenda files or temporary export/metadata buffers."
+  (add-hook 'window-buffer-change-functions
+            #'my/org--fold-note-blocks-on-display nil t))
 
 ;; Doom-Emacs-insert
 (defun my/org--insert-item (direction)
@@ -56,8 +94,7 @@
       ((or `table `table-row)
        (pcase direction
          ('below (org-table-next-row t))
-         ('above (org-table-insert-row)
-                 )))
+         ('above (org-table-insert-row))))
 
       ;; Otherwise, add a new heading, carrying over any todo state, if
       ;; necessary.
@@ -80,16 +117,10 @@
          (run-hooks 'org-insert-heading-hook)
          (when-let* ((todo-keyword (org-element-property :todo-keyword context))
                      (todo-type    (org-element-property :todo-type context)))
-           (org-todo
-            (cond ((eq todo-type 'done)
-                   ;; Doesn't make sense to create more "DONE" headings
-                   )
-                  (todo-keyword)
-                  ('todo)))))))
+           (org-todo (unless (eq todo-type 'done) todo-keyword))))))
 
     (when (org-invisible-p)
-      (org-show-hidden-entry))
-    ))
+      (org-show-hidden-entry))))
 (defun my/org-insert-item-below (count)
   "Inserts a new heading, table cell or item below the current one."
   (interactive "p")

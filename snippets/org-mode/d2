@@ -1,0 +1,8 @@
+# -*- mode: snippet -*-
+# name: D2 diagram
+# key: d2
+# --
+#+name: ${1:diagram}
+#+begin_src d2 :file $1.svg :exports results :eval never-export
+$0
+#+end_src

@@ -7,6 +7,7 @@
 ;;; Code:
 (require 'cl-lib)
 (require 'prog-mode)
+(require 'seq)
 
 (defvar my/pretty-symbols
   '(
@@ -42,18 +43,20 @@ After editing, re-evaluate the declarations and run `my/prettify-setup'.")
   (or (alist-get name my/pretty-symbols)
       (error "Unknown pretty symbol: %S" name)))
 
+(defun my/prettify--symbols (entries)
+  "Resolve (TEXT SYMBOL-NAME) ENTRIES into prettification pairs."
+  (mapcar (lambda (entry)
+            (pcase entry
+              (`(,(and text (pred stringp)) ,(and name (pred symbolp)))
+               (cons text (my/pretty-symbol name)))
+              (_ (error "Expected (TEXT SYMBOL-NAME), got %S" entry))))
+          entries))
+
 (defmacro my/prettify-set (modes &rest entries)
   "Declare ENTRIES as (TEXT SYMBOL-NAME) pairs for unquoted MODES.
 MODES is a mode name or list of mode names.  No entries clears their tables."
   (declare (indent 1))
-  `(my/prettify-register ',modes
-     (list ,@(mapcar
-              (lambda (entry)
-                (pcase entry
-                  (`(,(and text (pred stringp)) ,(and name (pred symbolp)))
-                   `(cons ,text (my/pretty-symbol ',name)))
-                  (_ (error "Expected (TEXT SYMBOL-NAME), got %S" entry))))
-              entries))))
+  `(my/prettify-register ',modes (my/prettify--symbols ',entries)))
 
 (defvar my/prettify-rules nil
   "Alist of major modes and their ordinary `prettify-symbols-alist' entries.
@@ -110,16 +113,13 @@ Prettify standalone dots, retaining the default string/comment checks."
   "Replace the SYMBOLS table for MODES (one mode or a list).
 Nil removes the table.  Re-evaluating a declaration does not append rules.
 Use `my/prettify-setup' to refresh an already open buffer."
-  (dolist (mode (if (listp modes) modes (list modes)))
+  (dolist (mode (ensure-list modes))
     (setf (alist-get mode my/prettify-rules nil t) (copy-tree symbols))))
 
 (defun my/prettify--merge (&rest tables)
   "Merge TABLES, keeping the first entry for each text string."
-  (let (result)
-    (dolist (entry (apply #'append tables))
-      (unless (assoc (car entry) result)
-        (push entry result)))
-    (nreverse result)))
+  (seq-uniq (apply #'append tables)
+            (lambda (a b) (equal (car a) (car b)))))
 
 (defvar my/math-rules nil
   "Mode-specific notation enabled by `my/math-symbols-mode'.")
@@ -151,7 +151,7 @@ DELTAS lists variables whose d_ prefix should display as delta.
 SYMBOLS uses the same (TEXT SYMBOL-NAME) pairs as `my/prettify-set'."
   (declare (indent 1))
   `(my/math-register ',modes ',subscripts ,indices ',deltas
-     ,(caddr (macroexpand `(my/prettify-set ,modes ,@symbols)))))
+     (my/prettify--symbols ',symbols)))
 
 (defun my/prettify--mode-rules (table)
   "Merge TABLE entries from the current mode through its parents."

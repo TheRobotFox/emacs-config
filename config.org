@@ -1,30 +1,11 @@
-:PROPERTIES:
-:GPTEL_MODEL: gpt-6-astra
-:GPTEL_BACKEND: Chat
-:GPTEL_SYSTEM: You are a large language model living in Emacs and a helpful assistant. Respond concisely.
-:GPTEL_TOOLS:
-:END:
 #+TITLE: Emacs Config
+
 #+PROPERTY: header-args:emacs-lisp :tangle init.el :results none
 
-This is the source for =init.el= and =early-init.el=. After editing, run
-=org-babel-tangle= (=C-c C-v t=), then restart Emacs to check startup.
-The files in =lisp/= are handwritten helpers and are loaded by this configuration.
-Run the focused regression checks with:
-=emacs -Q --batch -l tests/config-tests.el -f ert-run-tests-batch-and-exit=.
-
-Keep package settings, hooks, and bindings together. Put shared editing commands
-in =lisp/= and document their purpose here. The final =COMMENT Experiments=
-subtree is inactive. To enable an experiment, move it to its owning section
-and remove any explicit =:tangle no= header.
-
-Intentional settings belong here. =custom.el= holds Custom's local bookkeeping
-(such as trusted themes), and is optional on a fresh checkout.
+Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
 
 * Bootstrap
 
-Set startup memory limits and load optional local Custom bookkeeping.
-Add the handwritten helper directory to Emacs's load path.
 #+begin_src emacs-lisp
 ;;; init.el --- Personal configuration -*- lexical-binding: t; -*-
 (setq gc-cons-threshold (* 1024 1024 200))
@@ -36,27 +17,14 @@ Add the handwritten helper directory to Emacs's load path.
 
 ** Early init
 
-Disable package.el before normal startup so Straight owns package installation.
 #+begin_src emacs-lisp :tangle early-init.el
-;;; ...  -*- lexical-binding: t -*-
-;;; early-init.el --- Emacs early init file
-;;; Commentary:
-;; Code to run before init.el is loaded.
-;;; Code:
-
-;; Disable package.el
+;;; early-init.el --- Startup settings -*- lexical-binding: t; -*-
+;; Straight owns package activation.
 (setq package-enable-at-startup nil)
-
-(setenv "LSP_USE_PLISTS" "true")
-
-(provide 'early-init)
-;;; early-init.el ends here
 #+end_src
 
 ** Straight and use-package
 
-Load Straight's bootstrap file, downloading its installer on a fresh checkout.
-This must run before any package declarations below.
 #+begin_src emacs-lisp
 (defvar bootstrap-version)
 (let ((bootstrap-file
@@ -73,26 +41,18 @@ This must run before any package declarations below.
       (goto-char (point-max))
       (eval-print-last-sexp)))
   (load bootstrap-file nil 'nomessage))
-#+end_src
 
-Use Straight as the default installer for use-package declarations.
-#+begin_src emacs-lisp
 (straight-use-package 'use-package)
 (setq straight-use-package-by-default t)
 (setq straight-allow-recipe-inheritance t)
 (setq straight-host-usernames '((github . "TheRobotFox")))
-#+end_src
 
-Register Eglot and its dependencies before helpers can load project.el or Eldoc.
-This prevents library-source conflicts when Eglot loads.
-#+begin_src emacs-lisp
+;; Register Eglot before helpers load project.el or Eldoc.
 (straight-use-package 'eglot)
 #+end_src
 
 ** Diminish
 
-Hide or abbreviate minor-mode names in the mode line.
-Other package declarations can opt in with =:diminish=.
 #+begin_src emacs-lisp
 (use-package diminish)
 #+end_src
@@ -101,8 +61,6 @@ Other package declarations can opt in with =:diminish=.
 
 ** Files, backups, and autosave
 
-Keep backups together, refresh files changed outside Emacs, and enable recent files.
-Use separate backup and autosave directories under the Emacs configuration directory.
 #+begin_src emacs-lisp
 (let ((backup-dir (expand-file-name "backup/" user-emacs-directory))
       (autosave-dir (expand-file-name "auto-save/" user-emacs-directory)))
@@ -120,7 +78,6 @@ Use separate backup and autosave directories under the Emacs configuration direc
 
 ** History and persistence
 
-Persist minibuffer history, the kill ring, and Corfu completion history across sessions.
 #+begin_src emacs-lisp
 (use-package savehist
   :config
@@ -129,51 +86,40 @@ Persist minibuffer history, the kill ring, and Corfu completion history across s
   (put 'kill-ring 'history-length 100)
   (add-to-list 'savehist-additional-variables 'kill-ring)
   (add-to-list 'savehist-additional-variables 'corfu-history)
-  (savehist-mode 1)
-  )
+  (savehist-mode 1))
 #+end_src
 
 ** Editing defaults
 
-Enable visual line wrapping and repeatable commands.
-Release =C-x C-c= for the Embrace binding defined below.
 #+begin_src emacs-lisp
 (setq-default fill-column 1100)
 (global-visual-line-mode t)
 (repeat-mode t)
-(global-unset-key (kbd "C-x C-c"))
+(keymap-global-unset "C-x C-c")
 #+end_src
 
 ** General keybindings
 
-Define general editing, window navigation, and configuration shortcuts.
-Package-specific bindings remain beside their owning package.
 #+begin_src emacs-lisp
-(use-package emacs
-  :straight nil
+(defun my/open-config ()
+  "Open the literate configuration."
+  (interactive)
+  (find-file (expand-file-name "config.org" user-emacs-directory)))
 
-  :config
-  (defun my/open-config ()
-    (interactive)
-    (find-file (expand-file-name "config.org" user-emacs-directory)))
-  (keymap-global-set "C-j" 'join-line)
-  (keymap-global-set "C-S-j" 'duplicate-line)
-  (keymap-global-set "C-x O" (lambda () (interactive)(other-window -1)))
-  :bind
-  ("C-x C" . my/open-config)
-  ("C-c i" . insert-char))
+(keymap-global-set "C-j" #'join-line)
+(keymap-global-set "C-S-j" #'duplicate-line)
+(keymap-global-set "C-x O" (lambda () (interactive) (other-window -1)))
+(keymap-global-set "C-x C" #'my/open-config)
+(keymap-global-set "C-c i" #'insert-char)
 #+end_src
 
 ** which-key
 
-Show available continuations while entering a key sequence.
-Use a shorter delay when updating an already visible which-key popup.
 #+begin_src emacs-lisp
 (use-package which-key
   :diminish
   :custom
   (which-key-idle-secondary-delay 0.3)
-                                        ;(which-key-dont-use-unicode t)
   :config
   (which-key-mode t))
 #+end_src
@@ -182,7 +128,6 @@ Use a shorter delay when updating an already visible which-key popup.
 
 ** Frame defaults
 
-Suppress the startup screen and hide menu, tool, and scroll bars.
 #+begin_src emacs-lisp
 (setq inhibit-startup-screen t)
 (menu-bar-mode -1)
@@ -192,8 +137,6 @@ Suppress the startup screen and hide menu, tool, and scroll bars.
 
 ** Fonts
 
-Choose the fixed and variable fonts and the default text size.
-Org heading faces below reuse the variable-font setting.
 #+begin_src emacs-lisp
 (setq my/font-size 12)
 (setq my/font-family-variable "Fira Sans"
@@ -208,18 +151,14 @@ Org heading faces below reuse the variable-font setting.
 
 ** Theme
 
-Load the light Tomorrow theme.
-Theme trust remains local bookkeeping in =custom.el=.
 #+begin_src emacs-lisp
 (use-package color-theme-sanityinc-tomorrow
-
   :config
   (load-theme 'sanityinc-tomorrow-day))
 #+end_src
 
 ** Icons
 
-Provide icon support and decorate Dired file listings.
 #+begin_src emacs-lisp
 (use-package all-the-icons)
 (use-package all-the-icons-dired
@@ -228,38 +167,22 @@ Provide icon support and decorate Dired file listings.
 
 ** Ligatures and prettification
 
-Define shared characters in =my/pretty-symbols= in [[file:lisp/my-ligatures.el][my-ligatures.el]]; language declarations reference their names.
-Use =M-x prettify-symbols-mode= to toggle substitutions, revealing original text at point.
-Refresh edited rules with =M-x my/prettify-setup=.
 #+begin_src emacs-lisp
 (require 'my-ligatures)
 (setopt prettify-symbols-unprettify-at-point 'right-edge)
 (add-hook 'after-change-major-mode-hook #'my/prettify-setup)
-#+end_src
 
-Prettify code names such as =x_i=, =d_x= and =eps= in programming buffers.
-Extend the defaults with =my/math-set=; toggle display with =my/math-symbols-mode=.
-#+begin_src emacs-lisp
 (my/math-set prog-mode
   :subscripts ("x" "y" "z" "k" "t" "w")
   :indices "ijkn0123456789"
   :deltas ("x" "y" "z" "k" "t" "w")
   :symbols (("eps" epsilon)))
 (add-hook 'prog-mode-hook (lambda () (my/math-symbols-mode 1)))
-#+end_src
 
-Let the font shape programming operators, plus prose ligatures in EWW.
-Toggle font ligatures with =M-x ligature-mode=.
-#+begin_src emacs-lisp
 (use-package ligature
   :config
-
-  ;; Enable the "www" ligature in every possible major mode
   (ligature-set-ligatures 't '("www"))
-  ;; Enable traditional ligature support in eww-mode, if the
-  ;; `variable-pitch' face supports it
   (ligature-set-ligatures 'eww-mode '("ff" "fi" "ffi"))
-  ;; Enable all Cascadia and Fira Code ligatures in programming modes
   (ligature-set-ligatures 'prog-mode
                           '("www" "**" "***" "**/" "*>" "*/" "\\\\" "\\\\\\" "{-" "::"
                             ":::" ":=" "!!" "!=" "!==" "-}" "----" "-->" "->" "->>"
@@ -276,7 +199,6 @@ Toggle font ligatures with =M-x ligature-mode=.
 
 ** Scrolling
 
-Enable smooth pixel-based scrolling.
 #+begin_src emacs-lisp
 (pixel-scroll-precision-mode t)
 #+end_src
@@ -285,30 +207,6 @@ Enable smooth pixel-based scrolling.
 
 *** Supporting panes and navigation
 
-With one editing column and at least 140 columns of frame width, supporting panes
-open on the right: documentation above, shell/REPL/output below. Otherwise they
-open at the bottom, with documentation on the left and process output on the right.
-Existing panes stay in place until closed or moved with =M-o s=; visible buffers reuse their windows.
-
-| Key | Action |
-|-----+--------|
-| =M-o e= | Select this project's Eshell; create it on first use |
-| =M-o r= | Select the associated language REPL or choose a project REPL |
-| =M-o d= | Toggle full Eldoc without leaving your code |
-| =M-o s= | Switch open supporting panes between right and bottom, keeping focus |
-| =C-c o= | Toggle the latest popup |
-| =C-c O= | Cycle popups using Popper's normal order |
-| =C-c M-o= | Promote a popup to an ordinary buffer, or demote it |
-
-Eshell and REPL commands select the process pane; Popper toggles individual popups.
-Start Python, SLY, and Haskell runtimes with their normal commands first.
-Popups use the source project as their group, or its directory outside a project.
-
-Eldoc shows short documentation in the echo area and full documentation in its pane.
-In Dired, clicks and =RET= open in place; =o= opens another window and =C-o= previews.
-
-Load the supporting-pane display action and expose direct commands under one prefix.
-Make Dired mouse clicks match keyboard navigation.
 #+begin_src emacs-lisp
 (require 'my-window-workflow)
 (defvar-keymap my/popup-command-map
@@ -325,8 +223,6 @@ Make Dired mouse clicks match keyboard navigation.
 
 *** Popup tracking
 
-Group popups by project while the shared display action handles their placement.
-Give documentation and process panes separate slots.
 #+begin_src emacs-lisp
 (use-package popper
   :demand t
@@ -335,8 +231,6 @@ Give documentation and process panes separate slots.
   ("C-c O"   . popper-cycle)
   ("C-c M-o" . popper-toggle-type)
   :init
-  (require 'project)
-  (require 'my-window-workflow)
   (setq popper-reference-buffers
         '("\\*Messages\\*"
           "Output\\*$"
@@ -350,75 +244,50 @@ Give documentation and process panes separate slots.
           compilation-mode
           eshell-mode
           vterm-mode))
-  (setq popper-group-function #'my/popup-group
+  (setq popper-group-function #'my/popup-root
         popper-display-function #'my/popup-display)
   :config
   (require 'popper-echo)
   (popper-mode +1)
-  (popper-echo-mode +1))                ; For echo area hints
+  (popper-echo-mode +1))
 #+end_src
 
 * Completion, search, and navigation
 
 ** Completion defaults
 
-Ignore case when completing file names, buffer names, and other candidates.
 #+begin_src emacs-lisp
-(use-package emacs
-  :straight nil
-  :custom
-  (read-file-name-completion-ignore-case t)
-  (read-buffer-completion-ignore-case t)
-  (completion-ignore-case t))
+(setopt read-file-name-completion-ignore-case t
+        read-buffer-completion-ignore-case t
+        completion-ignore-case t)
 #+end_src
 
 ** Minibuffer
 
 *** Recursive Minibuffer
 
-Allow commands to open nested minibuffers and protect prompt text.
-Hide commands from completion when they do not apply to the current buffer.
 #+begin_src emacs-lisp
-;; Emacs minibuffer configurations.
-(use-package emacs
-  :straight nil
-  :custom
-  ;; Support opening new minibuffers from inside existing minibuffers.
-  (enable-recursive-minibuffers t)
-  ;; Hide commands in M-x which do not work in the current mode.  Vertico
-  ;; commands are hidden in normal buffers. This setting is useful beyond
-  ;; Vertico.
-  (read-extended-command-predicate #'command-completion-default-include-p)
-  ;; Do not allow the cursor in the minibuffer prompt
-  (minibuffer-prompt-properties
-   '(read-only t cursor-intangible t face minibuffer-prompt)))
+(setopt enable-recursive-minibuffers t
+        read-extended-command-predicate #'command-completion-default-include-p
+        minibuffer-prompt-properties
+        '(read-only t cursor-intangible t face minibuffer-prompt))
 #+end_src
 
 *** Vertico
 
-Display minibuffer candidates vertically and resize the candidate area as needed.
-Orderless and Marginalia supply matching and annotations separately.
 #+begin_src emacs-lisp
 (use-package vertico
   :custom
-  ;; (vertico-scroll-margin 0) ;; Different scroll margin
-  ;; (vertico-count 20) ;; Show more candidates
-  (vertico-resize t) ;; Grow and shrink the Vertico minibuffer
-  ;; (vertico-cycle t) ;; Enable cycling for `vertico-next/previous'
+  (vertico-resize t)
   :init
   (vertico-mode))
 #+end_src
 
 *** Orderless
 
-Match completion candidates using Orderless with basic completion as a fallback.
-File completion retains partial-completion behavior.
 #+begin_src emacs-lisp
 (use-package orderless
   :custom
-  ;; Configure a custom style dispatcher (see the Consult wiki)
-  ;; (orderless-style-dispatchers '(+orderless-consult-dispatch orderless-affix-dispatch))
-  ;; (orderless-component-separator #'orderless-escapable-split-on-space)
   (completion-styles '(orderless basic))
   (completion-category-defaults nil)
   (completion-category-overrides '((file (styles partial-completion)))))
@@ -426,58 +295,33 @@ File completion retains partial-completion behavior.
 
 *** Marginalia
 
-Annotate minibuffer candidates with contextual information.
-Use =M-A= inside the minibuffer to cycle annotation styles.
 #+begin_src emacs-lisp
 (use-package marginalia
-  ;; Bind `marginalia-cycle' locally in the minibuffer.  To make the binding
-  ;; available in the *Completions* buffer, add it to the
-  ;; `completion-list-mode-map'.
   :bind (:map minibuffer-local-map
               ("M-A" . marginalia-cycle))
-
-  ;; The :init section is always executed.
   :init
-
-  ;; Marginalia must be activated in the :init section of use-package such that
-  ;; the mode gets enabled right away. Note that this forces loading the
-  ;; package.
   (marginalia-mode))
 #+end_src
 
 ** In-buffer completion: Corfu and Cape
 
-Show automatic in-buffer completion with history and documentation popups.
-Cape and major modes supply the completion candidates.
 #+begin_src emacs-lisp
 (use-package corfu
-  ;; Optional customizations
   :custom
   (corfu-auto t)
-  (corfu-cycle t)                ;; Enable cycling for `corfu-next/previous'
-  ;; (corfu-quit-at-boundary nil)   ;; Never quit at completion boundary
-  (corfu-quit-no-match 'separator)      ;; Never quit, even if there is no match
-  ;; (corfu-preview-current nil)    ;; Disable current candidate preview
-  (corfu-preselect 'prompt)      ;; Preselect the prompt
-  (corfu-on-exact-match nil)     ;; Configure handling of exact matches
-
-  (corfu-popupinfo-delay '(0.5 . 1.0))	; Make PopuoInfo faster
+  (corfu-cycle t)
+  (corfu-quit-no-match 'separator)
+  (corfu-preselect 'prompt)
+  (corfu-on-exact-match nil)
+  (corfu-popupinfo-delay '(0.5 . 1.0))
   :init
-
-  ;; Recommended: Enable Corfu globally.  Recommended since many modes provide
-  ;; Capfs and Dabbrev can be used globally (M-/).  See also the customization
-  ;; variable `global-corfu-modes' to exclude certain modes.
   (global-corfu-mode 1)
-
-  ;; Enable optional extension modes:
   (corfu-history-mode 1)
   (corfu-popupinfo-mode 1))
 #+end_src
 
 *** Cape
 
-Provide file and text fallbacks after major-mode completion, with local Org sources.
-Use =C-c p= to request specialized completion, including Lisp symbols, explicitly.
 #+begin_src emacs-lisp
 (use-package cape
   :bind ("C-c p" . cape-prefix-map)
@@ -494,7 +338,6 @@ Use =C-c p= to request specialized completion, including Lisp symbols, explicitl
 
 ** Consult
 
-Use Consult for buffer switching, search, registers, diagnostics, and cross-references.
 #+begin_src emacs-lisp
 (use-package consult
   :bind
@@ -504,15 +347,15 @@ Use Consult for buffer switching, search, registers, diagnostics, and cross-refe
    ("C-c k" . consult-man)
    ("C-h I" . consult-info)
 
-   ("C-x 4 b" . consult-buffer-other-window) ;; orig. switch-to-buffer-other-window
-   ("C-x 5 b" . consult-buffer-other-frame)  ;; orig. switch-to-buffer-other-frame
-   ("C-x t b" . consult-buffer-other-tab)    ;; orig. switch-to-buffer-other-tab
-   ("C-x r b" . consult-bookmark)            ;; orig. bookmark-jump
-   ("C-x p b" . consult-project-buffer)      ;; orig. project-switch-to-buffer
+   ("C-x 4 b" . consult-buffer-other-window)
+   ("C-x 5 b" . consult-buffer-other-frame)
+   ("C-x t b" . consult-buffer-other-tab)
+   ("C-x r b" . consult-bookmark)
+   ("C-x p b" . consult-project-buffer)
 
    ;; Custom M-# bindings for fast register access
    ("M-#" . consult-register-load)
-   ("M-'" . consult-register-store)          ;; orig. abbrev-prefix-mark (unrelated)
+   ("M-'" . consult-register-store)
    ("C-M-#" . consult-register)
 
    ("M-y" . consult-yank-from-kill-ring)
@@ -532,15 +375,13 @@ Use Consult for buffer switching, search, registers, diagnostics, and cross-refe
    ("M-g M" . consult-global-mark)
    ("M-g m" . consult-mark)
 
-
    ("M-s g c" . vc-find-conflicted-file)
 
    ;; M-s bindings in `search-map'
-   ("M-s f" . consult-fd)                  ;; Alternative: consult-fd
+   ("M-s f" . consult-fd)
    ("M-s b" . consult-buffer)
 
    ("M-s c" . consult-locate)
-   ;;("M-s g" . consult-grep)
    ("M-s g g" . consult-git-grep)
    ("M-s r" . consult-ripgrep)
    ("M-s l" . consult-line)
@@ -550,18 +391,14 @@ Use Consult for buffer switching, search, registers, diagnostics, and cross-refe
 
    ("M-s e" . consult-isearch-history)
    :map isearch-mode-map
-   ("M-e" . consult-isearch-history)         ;; orig. isearch-edit-string
-   ("M-s e" . consult-isearch-history)       ;; orig. isearch-edit-string
-   ("M-s l" . consult-line)                  ;; needed by consult-line to detect isearch
+   ("M-e" . consult-isearch-history)
+   ("M-s e" . consult-isearch-history)
+   ("M-s l" . consult-line)
    ("M-s L" . consult-line-multi))
   (:repeat-map flymake-goto-repeat-map
                ("n" . flymake-goto-next-error)
                ("p" . flymake-goto-prev-error))
   :init
-  ;; Tweak the register preview for `consult-register-load',
-  ;; `consult-register-store' and the built-in commands.  This improves the
-  ;; register formatting, adds thin separator lines, register sorting and hides
-  ;; the window mode line.
   (advice-add #'register-preview :override #'consult-register-window)
   (setq register-preview-delay 0.5)
 
@@ -572,59 +409,37 @@ Use Consult for buffer switching, search, registers, diagnostics, and cross-refe
 
 ** Embark
 
-Expose context-sensitive actions through Embark and previews through Consult.
-Collected results get a simplified window presentation.
 #+begin_src emacs-lisp
 (use-package embark
-
   :bind
-  (("C-." . embark-act)         ;; pick some comfortable binding
-   ("C-;" . embark-dwim)        ;; good alternative: M-.
-   ("C-h B" . embark-bindings)) ;; alternative for `describe-bindings'
-
+  (("C-." . embark-act)
+   ("C-;" . embark-dwim)
+   ("C-h B" . embark-bindings))
   :init
-
   ;; Optionally replace the key help with a completing-read interface
   (setq prefix-help-command #'embark-prefix-help-command)
-
-  ;; Show the Embark target at point via Eldoc. You may adjust the
-  ;; Eldoc strategy, if you want to see the documentation from
-  ;; multiple providers. Beware that using this can be a little
-  ;; jarring since the message shown in the minibuffer can be more
-  ;; than one line, causing the modeline to move up and down:
-
-  ;; (add-hook 'eldoc-documentation-functions #'embark-eldoc-first-target)
-  ;; (setq eldoc-documentation-strategy #'eldoc-documentation-compose-eagerly)
-
   :config
-
   ;; Hide the mode line of the Embark live/completions buffers
   (add-to-list 'display-buffer-alist
                '("\\`\\*Embark Collect \\(Live\\|Completions\\)\\*"
                  nil
                  (window-parameters (mode-line-format . none)))))
 
-;; Consult users will also want the embark-consult package.
 (use-package embark-consult
-
   :hook
   (embark-collect-mode . consult-preview-at-point-mode))
 #+end_src
 
 ** wgrep
 
-Allow editing search-result buffers and applying changes back to their files.
 #+begin_src emacs-lisp
 (use-package wgrep)
 #+end_src
 
 ** Avy and Isearch
 
-Jump to visible text with Avy and connect it to Isearch and other-window search.
-The integration follows [[https://karthinks.com/software/avy-can-do-anything/][Avy can do anything]].
 #+begin_src emacs-lisp
 (use-package avy
-
   :bind
   ("M-g w" . avy-goto-word-0)
   ("M-g M-g" . avy-goto-line)
@@ -633,13 +448,10 @@ The integration follows [[https://karthinks.com/software/avy-can-do-anything/][A
   ("M-j" . avy-goto-char-timer)
   :custom
   (avy-background t)
-  (avy-all-windows nil)			; Only Run in single Window (use C-u)
-
+  (avy-all-windows nil)
   :config
   (avy-setup-default)
-
-  (define-key isearch-mode-map (kbd "M-j") 'avy-isearch)
-
+  (keymap-set isearch-mode-map "M-j" 'avy-isearch)
   (defun my/isearch-forward-other-window (prefix)
     "Function to isearch-forward in other-window."
     (interactive "P")
@@ -649,7 +461,6 @@ The integration follows [[https://karthinks.com/software/avy-can-do-anything/][A
           (other-window next)
           (isearch-forward)
           (other-window (- next))))))
-
   (defun my/isearch-backward-other-window (prefix)
     "Function to isearch-backward in other-window."
     (interactive "P")
@@ -659,27 +470,22 @@ The integration follows [[https://karthinks.com/software/avy-can-do-anything/][A
           (other-window next)
           (isearch-backward)
           (other-window (- next))))))
-
-  (define-key global-map (kbd "C-M-s") 'my/isearch-forward-other-window)
-  (define-key global-map (kbd "C-M-r") 'my/isearch-backward-other-window))
+  (keymap-set global-map "C-M-s" 'my/isearch-forward-other-window)
+  (keymap-set global-map "C-M-r" 'my/isearch-backward-other-window))
 #+end_src
 
 ** Phi-search
 
-Use Phi-search for forward/backward search and query replacement.
-These global bindings complement the multiple-cursors editing workflow.
 #+begin_src emacs-lisp
 (use-package phi-search
   :config
-  (global-set-key (kbd "M-%") 'phi-replace-query)
-  (global-set-key (kbd "C-s") 'phi-search)
-  (global-set-key (kbd "C-r") 'phi-search-backward))
+  (keymap-global-set "M-%" 'phi-replace-query)
+  (keymap-global-set "C-s" 'phi-search)
+  (keymap-global-set "C-r" 'phi-search-backward))
 #+end_src
 
 ** Documentation
 
-Browse downloaded API documentation with =C-h D=; C/C++ buffers select their reference automatically.
-Use =C-u C-h D= to choose documents, and =M-x devdocs-install= to add libraries.
 #+begin_src emacs-lisp
 (use-package devdocs
   :bind ("C-h D" . devdocs-lookup)
@@ -689,25 +495,10 @@ Use =C-u C-h D= to choose documents, and =M-x devdocs-install= to add libraries.
   ((c++-mode c++-ts-mode) . (lambda () (setq-local devdocs-current-docs '("cpp")))))
 #+end_src
 
-Look up installed Dash docsets using Consult and display documentation in EWW.
-Seed documentation searches with the symbol at point.
-#+begin_src emacs-lisp
-(use-package dash-docs
-  :custom
-  (dash-docs-browser-func 'eww-browse-url))
-(use-package consult-dash
-  :bind (("M-s d" . consult-dash))
-  :config
-  ;; Use the symbol at point as initial search term
-  (consult-customize consult-dash :initial (thing-at-point 'symbol)))
-#+end_src
-
 * Editing tools
 
 ** expand-region
 
-Expand the active region through progressively larger syntactic units.
-Use =C-== to expand and =C-M-== to contract; parsed buffers use the Tree-sitter helpers.
 #+begin_src emacs-lisp
 (use-package expand-region
   :commands (er/expand-region er/contract-region))
@@ -715,8 +506,6 @@ Use =C-== to expand and =C-M-== to contract; parsed buffers use the Tree-sitter 
 
 ** embrace
 
-Change or remove surrounding delimiters with Embrace.
-Use =C-x C-c= and =C-x C-d=.
 #+begin_src emacs-lisp
 (use-package embrace
   :bind
@@ -726,14 +515,11 @@ Use =C-x C-c= and =C-x C-d=.
 
 ** yasnippet
 
-Load personal and community snippets and enable expansion globally.
-Register Yasnippet's completion source once, after Cape is available.
 #+begin_src emacs-lisp
 (use-package yasnippet
   :bind
   (("M-SPC" . yas-expand)
-   ("M-S-SPC" . yas-insert-snippet)
-   )
+   ("M-S-SPC" . yas-insert-snippet))
   :custom
   (yas-snippet-dirs (list (expand-file-name "snippets" user-emacs-directory)))
   :config
@@ -748,12 +534,9 @@ Register Yasnippet's completion source once, after Cape is available.
 
 ** Smartparens
 
-Enable paired-delimiter editing with Smartparens's default configuration.
-Install its editing bindings alongside global pair handling.
 #+begin_src emacs-lisp
 (use-package smartparens
   :config
-  ;; load default config
   (require 'smartparens-config)
   (sp-use-smartparens-bindings)
   (smartparens-global-mode 1))
@@ -761,8 +544,6 @@ Install its editing bindings alongside global pair handling.
 
 ** multiple-cursors
 
-Create and move multiple cursors using a dedicated prefix and repeat map.
-Keep Return available for normal editing while multiple cursors are active.
 #+begin_src emacs-lisp
 (use-package multiple-cursors
   :config
@@ -772,27 +553,24 @@ Keep Return available for normal editing while multiple cursors are active.
     "p" #'mc/mark-previous-like-this
     "N" #'mc/skip-to-next-like-this
     "P" #'mc/skip-to-previous-like-this)
-  (global-set-key (kbd"C-S-c") mc-repeat-map)
-  (define-key mc/keymap (kbd "<return>") nil)
-  (global-set-key (kbd "C-S-c C-S-c" ) 'mc/edit-lines)
-  (global-set-key (kbd "C-S-c a") 'mc/mark-all-symbols-like-this)
-  (global-set-key (kbd "C-S-c d" ) 'mc/mark-all-like-this-dwim)
-  (global-set-key (kbd "C-S-c e" ) 'mc/mark-more-like-this-extended))
+  (keymap-global-set "C-S-c" mc-repeat-map)
+  (keymap-set mc/keymap "<return>" nil)
+  (keymap-global-set "C-S-c C-S-c" 'mc/edit-lines)
+  (keymap-global-set "C-S-c a" 'mc/mark-all-symbols-like-this)
+  (keymap-global-set "C-S-c d" 'mc/mark-all-like-this-dwim)
+  (keymap-global-set "C-S-c e" 'mc/mark-more-like-this-extended))
 #+end_src
 
 * Development
 
 ** Common programming defaults
 
-Show line numbers in programming buffers.
 #+begin_src emacs-lisp
 (add-hook 'prog-mode-hook #'display-line-numbers-mode)
 #+end_src
 
 ** Git
 
-Use Magit for Git and =C-c v= for repeatable conflict resolution in Smerge buffers.
-Conflict bindings are buffer-local.
 #+begin_src emacs-lisp
 (use-package magit
   :bind ("M-s g f" . magit-find-file))
@@ -814,8 +592,6 @@ Conflict bindings are buffer-local.
 
 ** Vterm
 
-Provide an integrated terminal through Vterm.
-Terminal popup handling is configured in the Popper section.
 #+begin_src emacs-lisp
 (use-package vterm
   :commands vterm)
@@ -823,8 +599,6 @@ Terminal popup handling is configured in the Popper section.
 
 ** Eglot
 
-Expose Eglot code actions, renaming, call hierarchy, and formatting.
-Individual language hooks decide when to start a language server.
 #+begin_src emacs-lisp
 (use-package eglot
   :custom
@@ -838,42 +612,30 @@ Individual language hooks decide when to start a language server.
 
 ** Tree-sitter helpers
 
-Keep native Tree-sitter tools in [[file:lisp/my-treesit.el][my-treesit.el]]; inspect syntax with =M-x treesit-explore-mode=.
-=C-c s s= resumes structural navigation across regions or cursors; =C-== expands and =C-M-== restores the previous selection set.
-=M-p/n= select siblings, =M-u/d= parent/child, =M-P/N= use native transposition. Selections end at point; shared parents and duplicates merge.
-=C-c s f t/s= filters descendants by type or matching siblings; filters can be chained. Conflicting transpositions are rejected before editing.
-Typing uses multiple-cursors normally and clears selection history; ordinary movement or =C-g= exits navigation. Native replacement and =C-c l= remain available.
 #+begin_src emacs-lisp
 (require 'my-treesit)
-(global-set-key (kbd "C-=") #'my/treesit-expand)
-(global-set-key (kbd "C-M-=") #'my/treesit-contract)
-(global-set-key (kbd "C-c s") my/treesit-action-map)
+(keymap-global-set "C-=" #'my/treesit-expand)
+(keymap-global-set "C-M-=" #'my/treesit-contract)
+(keymap-global-set "C-c s" my/treesit-action-map)
 #+end_src
 
 ** Languages
 
 *** Maxima
 
-Provide Maxima interaction and autoload its image-capable interfaces.
 #+begin_src emacs-lisp
 (use-package maxima
   :config
   (add-to-list 'load-path "/usr/share/emacs/site-lisp/maxima/")
   (autoload 'imaxima "imaxima" "Frontend for maxima with Image support" t)
-  (autoload 'imath-mode "imath" "Imath mode for math formula input" t)
-
-  )
+  (autoload 'imath-mode "imath" "Imath mode for math formula input" t))
 #+end_src
 
 *** C/C++
 
-Use Tree-sitter C/C++ modes with Eglot and shared structural editing helpers.
 #+begin_src emacs-lisp
 (use-package c-ts-mode
-  :dash
-  (c-ts-mode "C")
-  (c++-ts-mode "C++")
-
+  :straight nil
   :custom
   (c-ts-indent-offset 4)
   :init
@@ -889,81 +651,33 @@ Use Tree-sitter C/C++ modes with Eglot and shared structural editing helpers.
   ((c++-ts-mode c-ts-mode) . eglot-ensure)
 
   ;; Treesit
-  ((c++-ts-mode c-ts-mode) . (lambda () (my/enable-treesit-extras))))
-#+end_src
+  ((c++-ts-mode c-ts-mode) . my/enable-treesit-extras))
 
-Display C++ reference entries using the external =cppman= and =col= commands.
-Default the lookup prompt to the symbol at point.
-#+begin_src emacs-lisp
-(defun my/cppman (entry)
-  "View C++ reference entry using cppman in Emacs, similar to man command.
-If called interactively with no argument, uses the symbol at point as default."
-  (interactive
-   (list (let* ((default (thing-at-point 'symbol t))
-                (prompt (if default
-                            (format "C++ Reference entry (default %s): " default)
-                          "C++ Reference entry: ")))
-           (read-string prompt nil nil default))))
-  (let ((buffer (get-buffer-create (format "*cppman %s*" entry))))
-    (with-current-buffer buffer
-      (setq buffer-read-only nil)
-      (erase-buffer)
-      (call-process-shell-command
-       (format "cppman %s | col -b" (shell-quote-argument entry))
-       nil (current-buffer))
-      (if (zerop (buffer-size))
-          (message "No results found for %s" entry)
-        (special-mode))
-      (setq buffer-read-only t)
-      (beginning-of-buffer))
-    (unless (zerop (buffer-size))
-      (switch-to-buffer buffer))))
-#+end_src
-
-Configure symbolic substitutions for C and C++ buffers.
-#+begin_src emacs-lisp
-(use-package emacs
-  :straight nil
-  :config
-  (my/prettify-set c++-ts-mode
-    ("std::sqrt"               sqrt)
-    ("std::limits<float>::max" infinity)
-    ("size_t"                  natural)
-    ("nullptr"                 null)
-    ("true"                    true)
-    ("false"                   false)
-    ("int"                     integer)
-    ("float"                   real)
-    ("std::string"             string)
-    ("bool"                    boolean)
-    ("!"                       not)
-    ("&&"                      and)
-    ("||"                      or)
-    ("for"                     for)
-    ("return"                  return)
-    ("#require"                yield))
-  (my/prettify-set c-ts-mode
-    ("sqrt"     sqrt)
-    ("INFINITY" infinity)
-    ("size_t"   natural)
-    ("nullptr"  null)
-    ("true"     true)
-    ("false"    false)
-    ("int"      integer)
-    ("float"    real)
-    ("bool"     boolean)
-    ("!"        not)
-    ("&&"       and)
-    ("||"       or)
-    ("for"      for)
-    ("return"   return)
-    ("#require" yield)))
+(my/prettify-set c-ts-base-mode
+  ("size_t"   natural)
+  ("nullptr"  null)
+  ("true"     true)
+  ("false"    false)
+  ("int"      integer)
+  ("float"    real)
+  ("bool"     boolean)
+  ("!"        not)
+  ("&&"       and)
+  ("||"       or)
+  ("for"      for)
+  ("return"   return)
+  ("#require" yield))
+(my/prettify-set c-ts-mode
+  ("sqrt"     sqrt)
+  ("INFINITY" infinity))
+(my/prettify-set c++-ts-mode
+  ("std::sqrt"               sqrt)
+  ("std::limits<float>::max" infinity)
+  ("std::string"             string))
 #+end_src
 
 **** Source/header creation
 
-Create a companion implementation file from a C/C++ header.
-For C++ headers, carry the enclosing namespace into the generated file.
 #+begin_src emacs-lisp
 (defun my/create-src-file ()
   "Create a new implementation buffer for the current C or C++ header."
@@ -998,45 +712,29 @@ For C++ headers, carry the enclosing namespace into the generated file.
 
 *** Haskell
 
-Install Haskell mode and recover missing or exited GHCi sessions on load/reload.
-Recovery drops commands left over from a dead process.
 #+begin_src emacs-lisp
 (use-package haskell-mode
   :config
   (require 'my-haskell-workflow))
-#+end_src
 
-Search Hoogle from Emacs using Consult.
-#+begin_src emacs-lisp
 (use-package consult-hoogle
   :straight `(:host nil
                     :repo "https://codeberg.org/rahguzar/consult-hoogle.git"
                     :files (:defaults "*.el"))
   :bind ("C-h h" . consult-hoogle))
-#+end_src
 
-Define Haskell symbol substitutions using ordinary prettification entries.
-Use =∘= for standalone composition dots; keep qualified names such as =Data.List= literal.
-Size it with =my/haskell-composition-face=; adjust alignment with =my/haskell-composition-raise=.
-#+begin_src emacs-lisp
-(use-package emacs
-  :straight nil
-
-  :config
-  (add-hook 'haskell-mode-hook #'my/haskell-prettify-setup)
-  (my/prettify-set haskell-mode
-    ("."      composition)
-    ("->"     arrow)
-    ("<-"     left-arrow)
-    ("Int"    integer)
-    ("Double" real)
-    ("Bool"   boolean)))
+(add-hook 'haskell-mode-hook #'my/haskell-prettify-setup)
+(my/prettify-set haskell-mode
+  ("."      composition)
+  ("->"     arrow)
+  ("<-"     left-arrow)
+  ("Int"    integer)
+  ("Double" real)
+  ("Bool"   boolean))
 #+end_src
 
 *** Lean 4
 
-Use Nael with Eglot for Lean 4 completion, diagnostics and proof goals; =M-o d= opens the goal documentation.
-Unicode abbreviations expand on space; =C-c C-k= explains input and =C-c C-c= runs =lake build=.
 #+begin_src emacs-lisp
 (use-package nael
   :mode ("\\.lean\\'" . nael-mode)
@@ -1047,8 +745,6 @@ Unicode abbreviations expand on space; =C-c C-k= explains input and =C-c C-c= ru
 
 *** Common Lisp
 
-Use SLY for Common Lisp interaction with the configured SBCL executable.
-Set SBCL's dynamic-space allocation.
 #+begin_src emacs-lisp
 (use-package sly
   :commands sly
@@ -1059,7 +755,6 @@ Set SBCL's dynamic-space allocation.
 
 *** Python
 
-Provide Python virtual-environment switching through Pyvenv.
 #+begin_src emacs-lisp
 (use-package pyvenv
   :commands (pyvenv-activate pyvenv-deactivate pyvenv-workon))
@@ -1069,12 +764,10 @@ Provide Python virtual-environment switching through Pyvenv.
 
 ** Package source and extensions
 
-Use the tecosaur development branch for the LaTeX preview features configured below.
-Load Org before applying its settings; package installation is defined only here.
 #+begin_src emacs-lisp
+;; The tecosaur fork supplies the live LaTeX preview API used below.
 (use-package org
   :demand t
-
   :straight `(org
               :fork (:host nil
                            :repo "https://git.tecosaur.net/tec/org-mode.git"
@@ -1099,10 +792,7 @@ Load Org before applying its settings; package installation is defined only here
                    (format "(defun org-git-version () \"The truncate git commit hash of Org mode.\" %S)\n" git-version)
                    "(provide 'org-version)\n")))
               :pin nil))
-#+end_src
 
-Load the additional Org modules used by the note configuration.
-#+begin_src emacs-lisp
 (use-package org-contrib
   :after org)
 (use-package org-eldoc
@@ -1111,87 +801,27 @@ Load the additional Org modules used by the note configuration.
 
 ** Files and navigation
 
-Keep notes under the Org directory and open file links in the current window.
-Use expanded paths so other Org blocks can share the same directory helper.
 #+begin_src emacs-lisp
-(with-eval-after-load 'org
-  (setopt
-   org-default-notes-file (expand-file-name "notes.org" org-directory)
-   org-startup-folded 'nofold
-   ))
-#+end_src
+(setopt org-default-notes-file (expand-file-name "notes.org" org-directory)
+        org-startup-folded 'nofold)
 
-Provide a shared Org path helper.
-#+begin_src emacs-lisp
-(with-eval-after-load 'org
-  (defun my/org-directory-file (path)
-    "Resolve PATH relative to the Org directory."
-    (expand-file-name path org-directory))
-  (setf (alist-get 'file org-link-frame-setup) 'find-file))
+(setf (alist-get 'file org-link-frame-setup) 'find-file)
 #+end_src
 
 ** Tasks, agenda, and capture
 
-*** Everyday workflow
-
-Project tasks live in =task.org= at the repository root; general tasks can stay
-in any Roam node or in =inbox.org= under the Roam directory. No date is required.
-
-| Key | Action |
-|-----+--------|
-| =C-x p C= | Explicit project task capture; select a project when outside one |
-| =C-c n t= | Task in current or selected Roam node, regardless of project context |
-| =C-c n c i= | General inbox task, from anywhere |
-| =C-c n c p= | Project TODO; shown only when a project is available |
-| =C-c a= | Standard Org agenda menu |
-| =C-c a o= | Overview: week and all open tasks across projects, Roam, and legacy files |
-| =C-c a f= | Focus: today's agenda and NEXT actions, sorted by category |
-| =C-c a r= | Review: inbox, undecided TODOs, and waiting or deferred work |
-| =C-c a p= | Current or selected project's overview |
-| =C-x p a= | Current or selected project's overview |
-| =C-x p t= | Open the project's task file |
-| =C-x p n= | Open or create the project's Roam note |
-| =C-c n P= | Associate an existing Roam note with a project |
-
-Finish capture with =C-c C-c=, or cancel with =C-c C-k=. In an overview, =g=
-discovers new task sources and refreshes the view; =RET= visits the task.
-Use =NEXT= for actionable work and =WAIT= for dependencies; unscheduled TODOs
-remain visible. In the agenda menu, =a= shows just the calendar and =t= just TODOs.
-
-During a review, process the inbox and choose a few =NEXT= actions; check =WAIT=
-for follow-ups and keep deferred work in =HOLD=, =IDEA=, or =DISSOLVE=.
-Schedule work when you intend to start it; use deadlines for real due dates.
-Focus shows every =NEXT= action, including unscheduled ones. The full overview
-remains the inventory of all open work, and the project view separates states.
-
-In an agenda, =TAB= previews the source, =t= changes state, =C-c C-s= schedules,
-and =C-c C-d= sets a deadline. Use =/= to filter, or =m= then =B= for bulk actions.
-
-A project note's file-level =PROJECT_ROOT= property gives project.el repository
-context. Capture can target the repository, current node, or inbox.
-Use =C-c n T= to add Roam tags.
-
-The overview discovers =task.org= and =tasks.org= in remembered projects and
-linked project notes, plus legacy task files and Roam TODOs.
-Set =my/task-extra-files= for additional sources.
-
 *** Agenda and task states
 
-Discover project task files, Roam TODOs, and legacy task files whenever the agenda opens.
-Include unscheduled work in the overview.
 #+begin_src emacs-lisp
 (require 'my-org-workflow)
-(with-eval-after-load 'org
-  (setopt org-agenda-include-diary t
-          diary-file "~/org/diary"
-          org-agenda-tags-column 0))
+;; Agenda discovery must not render every note's LaTeX previews.
+(setopt org-agenda-inhibit-startup t
+        org-agenda-include-diary t
+        diary-file "~/org/diary"
+        org-agenda-tags-column 0)
 (advice-add 'org-agenda :before #'my/task-refresh-agenda)
 (keymap-global-set "C-c a" #'org-agenda)
-#+end_src
 
-Register the complete inventory in Org's standard custom agenda menu.
-Use Org's normal refresh command, rediscovering task files on each rebuild.
-#+begin_src emacs-lisp
 (org-add-agenda-custom-command
  '("o" "Overview: week and all open tasks"
    ((agenda "" ((org-agenda-span 7)))
@@ -1199,11 +829,7 @@ Use Org's normal refresh command, rediscovering task files on each rebuild.
                  (org-agenda-sorting-strategy '(category-keep todo-state-up priority-down)))))
    ((org-agenda-files (my/task-agenda-files))
     (org-agenda-buffer-name "*Task Overview*"))))
-#+end_src
 
-Focus on today's calendar and NEXT actions without hiding unscheduled next steps.
-Keep categories together and higher-priority actions first within each category.
-#+begin_src emacs-lisp
 (org-add-agenda-custom-command
  '("f" "Focus: today and next actions"
    ((agenda "" ((org-agenda-span 1)
@@ -1213,11 +839,7 @@ Keep categories together and higher-priority actions first within each category.
                   (org-agenda-sorting-strategy '(category-keep priority-down)))))
    ((org-agenda-files (my/task-agenda-files))
     (org-agenda-buffer-name "*Task Focus*"))))
-#+end_src
 
-Review the inbox, undecided tasks, and waiting or deferred work in separate blocks.
-Inbox entries appear once; completing a task removes it from the review.
-#+begin_src emacs-lisp
 (org-add-agenda-custom-command
  '("r" "Review: inbox, decisions, and waiting"
    ((alltodo "" ((org-agenda-overriding-header "Inbox — clarify and place")
@@ -1231,11 +853,7 @@ Inbox entries appear once; completing a task removes it from the review.
    ((org-agenda-files (my/task-agenda-files))
     (org-agenda-sorting-strategy '(category-keep priority-down))
     (org-agenda-buffer-name "*Task Review*"))))
-#+end_src
 
-Separate project next actions, backlog, and waiting work below its weekly calendar.
-The project helper applies the same repository restriction to every block and refresh.
-#+begin_src emacs-lisp
 (setq my/task-project-agenda-blocks
       '((agenda "" ((org-agenda-span 7)))
         (todo "NEXT" ((org-agenda-overriding-header "Next actions")))
@@ -1244,11 +862,7 @@ The project helper applies the same repository restriction to every block and re
         (todo "HOLD|IDEA|DISSOLVE" ((org-agenda-overriding-header "Deferred")))))
 (org-add-agenda-custom-command
  '("p" "Project: week, next actions, and backlog" my/project-task-agenda ""))
-#+end_src
 
-Keep agenda rows aligned, metadata compact, and section boundaries easy to scan.
-Use buffer-local fonts and spacing.
-#+begin_src emacs-lisp
 (add-hook 'org-agenda-mode-hook #'my/task-agenda-appearance)
 (setopt org-agenda-block-separator "────────────────────────"
         org-agenda-prefix-format
@@ -1262,10 +876,7 @@ Use buffer-local fonts and spacing.
  '(org-agenda-date ((t (:inherit font-lock-comment-face :weight bold))))
  '(org-agenda-date-today ((t (:inherit org-agenda-date :foreground unspecified :weight bold :underline t))))
  '(org-agenda-done ((t (:inherit shadow)))))
-#+end_src
 
-Define task states and the transitions that record timestamps or notes.
-#+begin_src emacs-lisp
 (setq org-todo-keywords
       '((sequence
          "TODO(t)"
@@ -1277,11 +888,7 @@ Define task states and the transitions that record timestamps or notes.
          "|"
          "DONE(d!)"
          "KILL(k@/!)")))
-#+end_src
 
-Distinguish next actions and waiting work with theme-aware faces shared with Org Modern.
-Deferred states stay subdued, while Org's existing warning face highlights overdue work.
-#+begin_src emacs-lisp
 (setopt org-todo-keyword-faces
         '(("NEXT" . (:inherit success :weight bold))
           ("WAIT" . (:inherit warning))
@@ -1293,8 +900,6 @@ Deferred states stay subdued, while Org's existing warning face highlights overd
 
 *** Capture templates
 
-Capture to the current project, current Roam node, or Roam inbox without requiring a date.
-The project TODO choice appears only in project context; node/inbox capture stays available.
 #+begin_src emacs-lisp
 (require 'my-org-capture)
 (setq org-capture-templates
@@ -1317,8 +922,6 @@ The project TODO choice appears only in project context; node/inbox capture stay
 
 *** Project context and navigation
 
-Associate a file-level Roam project node with PROJECT_ROOT, while tasks live in the repository.
-The project switch menu exposes notes, task files, capture, and a project-filtered overview.
 #+begin_src emacs-lisp
 (add-hook 'project-find-functions #'my/project-from-roam)
 (keymap-set project-prefix-map "n" #'my/project-note)
@@ -1334,86 +937,67 @@ The project switch menu exposes notes, task files, capture, and a project-filter
 
 ** Editing commands
 
-Configure heading-aware movement and insertion in Org buffers.
 #+begin_src emacs-lisp
-(with-eval-after-load 'org
-  (setopt
-   org-special-ctrl-a/e t
-   org-insert-heading-respect-content t
-   org-adapt-indentation t
-   ))
-#+end_src
+(setopt org-special-ctrl-a/e t
+        org-insert-heading-respect-content t
+        org-adapt-indentation t)
 
-Load context-sensitive insertion from [[file:lisp/my-org-editing.el][my-org-editing.el]] and bind insertion above/below.
-Release Org’s =C-j= so the general join-line shortcut remains available.
-#+begin_src emacs-lisp
-(with-eval-after-load 'org
-  (require 'my-org-editing)
-  (keymap-unset org-mode-map "C-j")
-  (define-key org-mode-map (kbd "C-<return>") #'my/org-insert-item-below)
-  (define-key org-mode-map (kbd "C-S-<return>") #'my/org-insert-item-above)
-  )
+(require 'my-org-editing)
+(keymap-unset org-mode-map "C-j")
+(keymap-set org-mode-map "C-<return>" #'my/org-insert-item-below)
+(keymap-set org-mode-map "C-S-<return>" #'my/org-insert-item-above)
+
 #+end_src
 
 ** Appearance
 
 *** Document display
 
-Hide markup while keeping headings, tags, and mathematical entities readable.
 #+begin_src emacs-lisp
-(with-eval-after-load 'org
-  (setopt
-   org-hide-leading-stars t
-   org-align-tags nil
-   org-tags-column 0
-   org-hide-emphasis-markers t
-   org-ellipsis "…"
-   org-pretty-entities t
-   org-pretty-entities-include-sub-superscripts nil
-   org-eldoc-breadcrumb-separator "→"
-   ))
+(setopt org-hide-leading-stars t
+        org-align-tags nil
+        org-tags-column 0
+        org-hide-emphasis-markers t
+        org-ellipsis "…"
+        org-pretty-entities t
+        org-pretty-entities-include-sub-superscripts nil
+        org-eldoc-breadcrumb-separator "→")
 #+end_src
 
 *** Fonts and faces
 
-Use variable-pitch prose while retaining fixed-pitch code, tables, and metadata.
-Heading sizes reuse the font choices from the general Appearance section.
 #+begin_src emacs-lisp
-(with-eval-after-load 'org
-  (add-hook 'org-mode-hook #'variable-pitch-mode)
+(add-hook 'org-mode-hook #'variable-pitch-mode)
 
-  (set-face-attribute 'org-table nil :inherit 'fixed-pitch)
-  (set-face-attribute 'org-block nil            :foreground nil :inherit
-                      'fixed-pitch :height 0.85)
-  (set-face-attribute 'org-block-begin-line nil :inherit 'fixed-pitch)
-  (set-face-attribute 'org-code nil             :inherit '(shadow fixed-pitch) :height 0.85)
-  (set-face-attribute 'org-verbatim nil         :inherit '(shadow fixed-pitch) :height 0.85)
-  (set-face-attribute 'org-special-keyword nil  :inherit '(font-lock-comment-face
-                                                           fixed-pitch))
-  (set-face-attribute 'org-meta-line nil        :inherit '(font-lock-comment-face fixed-pitch))
-  (set-face-attribute 'org-checkbox nil         :inherit 'fixed-pitch)
+(set-face-attribute 'org-table nil :inherit 'fixed-pitch)
+(set-face-attribute 'org-block nil            :foreground nil :inherit
+                    'fixed-pitch :height 0.85)
+(set-face-attribute 'org-block-begin-line nil :inherit 'fixed-pitch)
+(set-face-attribute 'org-code nil             :inherit '(shadow fixed-pitch) :height 0.85)
+(set-face-attribute 'org-verbatim nil         :inherit '(shadow fixed-pitch) :height 0.85)
+(set-face-attribute 'org-special-keyword nil  :inherit '(font-lock-comment-face
+                                                         fixed-pitch))
+(set-face-attribute 'org-meta-line nil        :inherit '(font-lock-comment-face fixed-pitch))
+(set-face-attribute 'org-checkbox nil         :inherit 'fixed-pitch)
 
-  (dolist (face '((org-level-1 . 1.35)
-                  (org-level-2 . 1.3)
-                  (org-level-3 . 1.2)
-                  (org-level-4 . 1.1)
-                  (org-level-5 . 1.1)
-                  (org-level-6 . 1.1)
-                  (org-level-7 . 1.1)
-                  (org-level-8 . 1.1)))
-    (set-face-attribute (car face) nil :font my/font-family-variable :weight 'bold :height (cdr face)))
+(dolist (face '((org-level-1 . 1.35)
+                (org-level-2 . 1.3)
+                (org-level-3 . 1.2)
+                (org-level-4 . 1.1)
+                (org-level-5 . 1.1)
+                (org-level-6 . 1.1)
+                (org-level-7 . 1.1)
+                (org-level-8 . 1.1)))
+  (set-face-attribute (car face) nil :font my/font-family-variable :weight 'bold :height (cdr face)))
 
-  (set-face-attribute 'org-drawer nil :height 0.7)
-  (set-face-attribute 'org-document-title nil :font my/font-family-variable :weight
-                      'bold :height 1.7)
+(set-face-attribute 'org-drawer nil :height 0.7)
+(set-face-attribute 'org-document-title nil :font my/font-family-variable :weight
+                    'bold :height 1.7)
 
-  )
 #+end_src
 
 *** Org Modern
 
-Decorate Org documents and agenda buffers with Org Modern.
-Use explicit buffer hooks so Consult can enable the same local presentation.
 #+begin_src emacs-lisp
 (use-package org-modern
   :after org
@@ -1430,11 +1014,8 @@ Use explicit buffer hooks so Consult can enable the same local presentation.
 
 *** Focused writing
 
-Enable a centered writing area and larger text in Org buffers.
-Restore the previous text scale when leaving the centered writing layout.
 #+begin_src emacs-lisp
 (use-package olivetti
-
   :hook
   (org-mode . olivetti-mode)
   (olivetti-mode . my/olivetti-text-scale)
@@ -1459,31 +1040,25 @@ Restore the previous text scale when leaving the centered writing layout.
         (setq my/olivetti-previous-text-scale nil))))
   :config
   (keymap-unset olivetti-mode-map "C-c \\")
-  (keymap-unset olivetti-mode-map "C-c |" )
-  (keymap-unset olivetti-mode-map "C-c {" )
-  (keymap-unset olivetti-mode-map "C-c }" ))
+  (keymap-unset olivetti-mode-map "C-c |")
+  (keymap-unset olivetti-mode-map "C-c {")
+  (keymap-unset olivetti-mode-map "C-c }"))
 #+end_src
 
 ** Links and images
 
-Configure link previews, remote-image caching, image size, and alignment.
-Set trusted resources for remote images.
 #+begin_src emacs-lisp
-(with-eval-after-load 'org
-  (setopt
-   org-display-remote-inline-images 'cache
-   org-image-actual-width 500
-   org-image-align 'center
-   org-startup-with-link-previews t
-   org-safe-remote-resources '("\\`https://fniessen\\.github\\.io\\(?:/\\|\\'\\)" )
-   ))
+(setopt org-display-remote-inline-images 'cache
+        org-image-actual-width 500
+        org-image-align 'center
+        org-startup-with-link-previews t
+        org-safe-remote-resources '("\\`https://fniessen\\.github\\.io\\(?:/\\|\\'\\)" ))
 #+end_src
 
 ** LaTeX
 
 *** Editing and PDF viewing
 
-Provide AUCTeX and CDLaTeX input, with PDF Tools as the PDF viewer.
 #+begin_src emacs-lisp
 (use-package auctex)
 (use-package tex
@@ -1491,7 +1066,6 @@ Provide AUCTeX and CDLaTeX input, with PDF Tools as the PDF viewer.
   :custom
   (TeX-view-program-selection '(((output-dvi has-no-display-manager) "dvi2tty") ((output-dvi style-pstricks) "dvips and gv") (output-dvi "xdvi") (output-pdf "PDF Tools") (output-html "xdg-open"))))
 (use-package cdlatex
-
   :hook
   (org-mode . org-cdlatex-mode)
   :custom
@@ -1502,8 +1076,6 @@ Provide AUCTeX and CDLaTeX input, with PDF Tools as the PDF viewer.
 
 **** Code comments
 
-Preview comment equations automatically in programming buffers, e.g. =\(\Delta x < \epsilon\)=.
-Edit [[file:latex/preview-master.tex][preview-master.tex]] for shared packages/macros; toggle with =M-x preview-auto-mode=.
 #+begin_src emacs-lisp
 (defun my/latex-comment-preview-p ()
   "Check comment syntax without disturbing preview-auto's delimiter match."
@@ -1548,61 +1120,60 @@ Edit [[file:latex/preview-master.tex][preview-master.tex]] for shared packages/m
 
 **** Org fragments
 
-Enable automatic LaTeX previews and keep their cache in temporary storage.
-Highlight LaTeX fragments and related syntax in the surrounding Org source.
 #+begin_src emacs-lisp
-(with-eval-after-load 'org
-  (setopt
-   org-startup-with-latex-preview t
-   org-latex-preview-cache 'temp
-   org-highlight-latex-and-related '(latex script entities)
-   ))
-#+end_src
+(setopt org-startup-with-latex-preview t
+        org-latex-preview-cache 'temp
+        org-highlight-latex-and-related '(latex script entities))
 
-Start the fork’s preview mode when entering an Org buffer.
-The matching Org version is selected in Package source and extensions.
-#+begin_src emacs-lisp
-(with-eval-after-load 'org
-  (add-hook 'org-mode-hook #'org-latex-preview-mode))
+(add-hook 'org-mode-hook #'org-latex-preview-mode)
 #+end_src
 
 *** Export
 
-Enable the existing export backends, including Beamer and man pages.
-Set the LaTeX export packages.
 #+begin_src emacs-lisp
-(with-eval-after-load 'org
-  (setopt
-   org-export-backends '(ascii beamer html icalendar latex man odt)
-   org-latex-packages-alist nil
-   ))
+(setopt org-export-backends '(ascii beamer html icalendar latex man odt)
+        org-latex-packages-alist nil)
 #+end_src
 
 ** Source blocks
 
+*** Diagrams and short proofs
+
+#+begin_src emacs-lisp
+;; Fold diagrams on first display; #+ATTR_ORG: :fold yes/no overrides a block.
+(add-hook 'org-mode-hook #'my/org-defer-note-folding)
+
+;; C-c C-, p inserts a proof; PDF export needs amsthm in the note.
+(add-to-list 'org-structure-template-alist '("p" . "proof"))
+#+end_src
+
 *** Editing
 
-Use language-aware highlighting and native indentation inside source blocks.
-Preserve zero extra indentation when entering or leaving the source editor.
 #+begin_src emacs-lisp
-(with-eval-after-load 'org
-  (setopt
-   org-src-fontify-natively t
-   org-src-tab-acts-natively t
-   org-edit-src-content-indentation 0
-   ))
+(setopt org-src-fontify-natively t
+        org-src-tab-acts-natively t
+        org-edit-src-content-indentation 0)
 #+end_src
 
 *** Babel execution
 
-Load Babel backends and run blocks without confirmation prompts.
-Configure PlantUML and refresh inline images after a block finishes.
 #+begin_src emacs-lisp
+(use-package d2-mode
+  ;; Load first: ob-d2 must replace the backend bundled with d2-mode.
+  :demand t
+  :mode "\\.d2\\'")
+
+(use-package ob-d2
+  :after (org d2-mode)
+  :demand t
+  :config
+  (add-to-list 'org-babel-default-header-args:d2 '(:eval . "never-export")))
+
 (setq org-confirm-babel-evaluate nil)
 (setq org-plantuml-jar-path "/usr/share/java/plantuml/plantuml.jar")
 (org-babel-do-load-languages
  'org-babel-load-languages
- '((awk . t) (latex . t) (dot . t) (plantuml . t) (shell . t)
+ '((awk . t) (latex . t) (d2 . t) (dot . t) (plantuml . t) (shell . t)
    (haskell . t) (C . t) (emacs-lisp . t) (gnuplot . t)))
 (add-hook 'org-babel-after-execute-hook #'org-redisplay-inline-images)
 #+end_src
@@ -1611,15 +1182,12 @@ Configure PlantUML and refresh inline images after a block finishes.
 
 *** Storage and commands
 
-Keep Roam’s directory, database synchronization, and active note commands together.
-Load it after Org so synchronization and its command map have explicit dependencies.
 #+begin_src emacs-lisp
 (use-package org-roam
   :after org
   :demand t
   :custom
   (org-roam-directory (file-truename "~/org/roam/"))
-
   :config
   (defvar-keymap org-node-map
     "f" #'org-roam-node-find
@@ -1633,17 +1201,13 @@ Load it after Org so synchronization and its command map have explicit dependenc
     "P" #'my/project-link-note
     "a" #'org-roam-alias-add
 
-    ;;"C" #'org-roam-capture ;; redundent?
     "C" #'org-id-get-create
     "c" #'org-capture
     "e" #'org-roam-extract-subtree
 
     ;; Dailies
     "d" #'org-roam-dailies-capture-today)
-
-  (setq org-roam-v2-ack t)
   (org-roam-db-autosync-mode 1)
-  ;; If using org-roam-protocol
   (require 'org-roam-protocol)
   (require 'org-roam-export)
   :bind-keymap
@@ -1652,10 +1216,9 @@ Load it after Org so synchronization and its command map have explicit dependenc
 
 *** Completion display
 
-Display the file and heading ancestry of each Roam completion candidate.
-Label formatting is adapted from Doom Emacs.
 #+begin_src emacs-lisp
-(with-eval-after-load 'org-roam      ;; Stolen code from doom emacs
+;; Completion hierarchy adapted from Doom Emacs.
+(with-eval-after-load 'org-roam
   (cl-defmethod org-roam-node-doom-filetitle ((node org-roam-node))
     "Return the value of \"#+title:\" (if any) from file that NODE resides in.
       If there's no file-level title in the file, return empty string."
@@ -1681,14 +1244,11 @@ Label formatting is adapted from Doom Emacs.
         (t (concat (propertize filetitle 'face '(shadow italic))
                    separator (propertize (string-join olp separator) 'face '(shadow italic))
                    separator title)))))
-  ;; If you're using a vertical completion framework, you might want a more informative completion interface
   (setq org-roam-node-display-template (concat "${doom-hierarchy:*} " (propertize "${tags:15}" 'face 'org-tag))))
 #+end_src
 
 *** Backlink LaTeX previews
 
-Render LaTeX in Roam’s backlink buffer after its contents are refreshed.
-This integration depends on the preview API supplied by the selected Org fork.
 #+begin_src emacs-lisp
 (with-eval-after-load 'org-roam
   (defun my/org-roam-preview-latex ()
@@ -1700,24 +1260,19 @@ This integration depends on the preview API supplied by the selected Org fork.
 
 *** Consult integration
 
-Connect Consult to Roam search, links, and buffer selection.
-Create these bindings only after both the Roam map and Consult are available.
 #+begin_src emacs-lisp
 (use-package consult-org-roam
-
   :after (org-roam consult)
   :demand t
+  :init
+  ;; Upstream preview cleanup reads this before collecting Roam buffers.
+  (defvar org-roam-buffer-open-buffer-list nil)
   :custom
-  ;; Use `ripgrep' for searching with `consult-org-roam-search'
   (consult-org-roam-grep-func #'consult-ripgrep)
-  ;; Configure a custom narrow key for `consult-buffer'
   (consult-org-roam-buffer-narrow-key ?r)
-  ;; Display org-roam buffers right after non-org-roam buffers
-  ;; in consult-buffer (and not down at the bottom)
   (consult-org-roam-buffer-after-buffers t)
   :config
   (consult-org-roam-mode 1)
-  ;; Eventually suppress previewing for certain functions
   (consult-customize
    consult-org-roam-forward-links
    :preview-key "M-.")
@@ -1729,8 +1284,6 @@ Create these bindings only after both the Roam map and Consult are available.
 
 *** File preview appearance
 
-Allow lightweight Org appearance hooks while Consult previews files.
-Enable these hooks during Consult previews.
 #+begin_src emacs-lisp
 (with-eval-after-load 'consult
   (dolist (hook '(org-modern-mode olivetti-mode variable-pitch-mode))
@@ -1739,7 +1292,6 @@ Enable these hooks during Consult previews.
 
 ** Anki
 
-Install the configured Org-to-Anki integration after Org.
 #+begin_src emacs-lisp
 (use-package org-anki
   :after org
@@ -1749,12 +1301,65 @@ Install the configured Org-to-Anki integration after Org.
 
 * Integrations
 
+** Mail
+
+Inbox and Sent are fetched with mbsync; credentials live in =~/.config/isync/=.
+
+#+begin_src emacs-lisp
+(use-package mu4e
+  :straight nil
+  :load-path "/usr/share/emacs/site-lisp/mu4e"
+  :commands mu4e
+  :config
+  (require 'smtpmail)
+  (add-to-list 'auth-sources (expand-file-name "~/.config/isync/gmail.authinfo"))
+  (add-to-list 'auth-sources (expand-file-name "~/.config/isync/university.authinfo"))
+  (setq user-mail-address "pfoch.tomke@gmail.com"
+        mu4e-mu-home (expand-file-name "~/.cache/mu-gmail")
+        mu4e-get-mail-command "mbsync -c ~/.config/isync/gmail gmail"
+        mu4e-update-interval 300
+        mu4e-change-filenames-when-moving t
+        mu4e-drafts-folder "/drafts"
+        mu4e-sent-folder "/sent"
+        mu4e-trash-folder "/trash"
+        ;; Gmail saves sent messages automatically.
+        mu4e-sent-messages-behavior 'delete
+        mu4e-maildir-shortcuts '((:maildir "/inbox" :key ?i)
+                                (:maildir "/sent" :key ?s))
+        mu4e-compose-context-policy 'ask
+        message-send-mail-function #'smtpmail-send-it
+        smtpmail-smtp-service 587
+        smtpmail-stream-type 'starttls
+        smtpmail-servers-requiring-authorization
+        (regexp-opt '("smtp.gmail.com" "mail.tu-berlin.de"))
+        mu4e-contexts
+        (list
+         (make-mu4e-context
+          :name "University"
+          :match-func
+          (lambda (msg)
+            (and msg (mu4e-message-contact-field-matches
+                      msg '(:to :cc :from) "t\\.pfoch@campus\\.tu-berlin\\.de")))
+          :vars '((user-mail-address . "t.pfoch@campus.tu-berlin.de")
+                  (smtpmail-smtp-server . "mail.tu-berlin.de")
+                  (smtpmail-smtp-user . nil)
+                  (mu4e-sent-messages-behavior . sent)))
+         (make-mu4e-context
+          :name "Gmail"
+          :match-func
+          (lambda (msg)
+            (and msg (mu4e-message-contact-field-matches
+                      msg '(:to :cc :from) "pfoch\\.tomke@gmail\\.com")))
+          :vars '((user-mail-address . "pfoch.tomke@gmail.com")
+                  (smtpmail-smtp-server . "smtp.gmail.com")
+                  (smtpmail-smtp-user . "pfoch.tomke@gmail.com")
+                  (mu4e-sent-messages-behavior . delete))))))
+#+end_src
+
 ** AI
 
 *** GPTel
 
-Keep =C-c RET= as a global send command, including inside Org buffers.
-Use =:bind*= for precedence over mode bindings.
 #+begin_src emacs-lisp
 (use-package gptel
   :custom
@@ -1767,20 +1372,16 @@ Use =:bind*= for precedence over mode bindings.
 
 ** PDF
 
-Open PDF files with PDF Tools and use normal Isearch inside PDF buffers.
 #+begin_src emacs-lisp
 (use-package pdf-tools
   :mode ("\\.pdf\\'" . pdf-view-mode)
   :config
-  (define-key pdf-view-mode-map (kbd "C-s") #'isearch-forward)
-  (define-key pdf-view-mode-map (kbd "C-r") #'isearch-backward))
-                                        ;(use-package org-noter)
+  (keymap-set pdf-view-mode-map "C-s" #'isearch-forward)
+  (keymap-set pdf-view-mode-map "C-r" #'isearch-backward))
 #+end_src
 
 ** Emacs Everywhere
 
-Configure Emacs Everywhere for the Linux Sway application-info backend.
-Defer loading until the integration is used.
 #+begin_src emacs-lisp
 (use-package emacs-everywhere
   :defer t
@@ -1790,431 +1391,7 @@ Defer loading until the integration is used.
 
 ** Matrix
 
-Install Ement for Matrix access from Emacs.
 #+begin_src emacs-lisp
 (use-package ement
   :commands ement-connect)
-#+end_src
-
-* Workflow backlog
-
-** TODO Explore useful Polymode workflows
-Consider real mixed-language documents before choosing host modes and delimiters.
-The retired GLSL example remains in Experiments for reference.
-
-** TODO Revisit other-window Isearch integration
-Review how searching should select and return from another window, and how it
-should interact with the current Phi-search and Avy bindings.
-
-* COMMENT Experiments
-:PROPERTIES:
-:header-args:emacs-lisp: :tangle no :results none
-:END:
-
-** Flycheck
-
-Alternative diagnostics with Flycheck.
-#+begin_src emacs-lisp
-(use-package flycheck
-
-  :hook (after-init . global-flycheck-mode))
-#+end_src
-
-Keep Consult's Flycheck integration beside the inactive Flycheck declaration.
-Enable both together if returning to that diagnostics workflow.
-#+begin_src emacs-lisp
-(use-package consult-flycheck
-  :bind ("M-g f" . consult-flycheck))
-#+end_src
-
-** Corfu overlay
-
-Keep the optional Corfu candidate overlay recipe for later experimentation.
-Its original note requires disabling Corfu's automatic popup mode.
-#+begin_src emacs-lisp
-
-(use-package corfu-candidate-overlay
-  :straight (:type git
-                   :repo "https://code.bsdgeek.org/adam/corfu-candidate-overlay"
-                   :files (:defaults "*.el"))
-  :after corfu
-  :config
-  ;; enable corfu-candidate-overlay mode globally
-  ;; this relies on having corfu-auto set to nil
-  (corfu-candidate-overlay-mode +1)
-  )
-#+end_src
-
-** Company
-
-Alternative completion with Company.
-#+begin_src emacs-lisp
-(use-package company
-  :config
-  ;;(global-company-mode)
-  )
-#+end_src
-
-** Tabspaces
-
-Project workspaces and sessions with Tabspaces.
-#+begin_src emacs-lisp
-(use-package tabspaces
-  ;; use this next line only if you also use straight, otherwise ignore it.
-  :straight (:type git :host github :repo "mclear-tools/tabspaces")
-  :hook (after-init . tabspaces-mode) ;; use this only if you want the minor-mode loaded at startup.
-  :commands (tabspaces-switch-or-create-workspace
-             tabspaces-open-or-create-project-and-workspace)
-  :custom
-  (tabspaces-use-filtered-buffers-as-default t)
-  (tabspaces-default-tab "Default")
-  (tabspaces-remove-to-default t)
-  ;;(tabspaces-include-buffers '("*scratch*"))
-  (tabspaces-initialize-project-with-todo t)
-  (tabspaces-todo-file-name "project-todo.org")
-  ;; sessions
-  (tabspaces-session t)
-  (tabspaces-session-auto-restore t))
-#+end_src
-
-** LSP
-
-Alternative language-server client and command map.
-#+begin_src emacs-lisp :tangle no
-(use-package lsp-mode
-  :custom
-  (lsp-completion-provider :none) ;; we use Corfu!
-  (lsp-headerline-breadcrumb-enable nil)
-  (lsp-enable-indentation t) ;; use it
-  (lsp-clangd-binary-path "/usr/local/bin/clangd")
-  :init
-  (defvar-keymap lsp-keymap
-    "a" #'lsp-execute-code-action
-    "r" #'lsp-rename
-    "h" #'lsp-treemacs-call-hierarchy
-    "f" #'lsp-format-buffer
-    "s" #'lsp-clangd-find-other-file
-    "o" #'lsp-organize-imports
-    "j" #'lsp-avy-lens)
-  :hook ((lsp-mode . lsp-enable-which-key-integration))
-
-  :bind-keymap
-  ("C-c l" . lsp-keymap)
-  :commands lsp)
-;; (use-package lsp-mode
-;;   ;:after lsp-ui
-;;   :custom-face
-;;   (lsp-ui-doc-background ((t (:background "White"))))
-;;   :init
-;;    (defun my/lsp-mode-setup-completion ()
-;;     (setf (alist-get 'styles (alist-get 'lsp-capf completion-category-defaults))
-;;           '(orderless))) ;; Configure orderless
-;;   (defun +lsp-lookup-definition-handler ()
-;;     "Find definition of the symbol at point using LSP."
-;;     (interactive)
-;;     (let doc (lsp-request "textDocument/hover" (lsp--text-document-position-params))
-;;     (with-help-window (generate-new-buffer "help") (with-current-buffer standard-output (insert doc )))))
-
-;;   (define-key lsp-ui-mode-map [remap xref-find-definitions] #'lsp-ui-peek-find-definitions)
-;;   (define-key lsp-ui-mode-map [remap xref-find-references] #'lsp-ui-peek-find-references)
-#+end_src
-
-Documentation display for the LSP experiment.
-#+begin_src emacs-lisp :tangle no
-(use-package lsp-ui
-  :custom
-  (lsp-ui-doc-show-with-mouse nil)
-  (lsp-ui-doc-position 'at-point))
-#+end_src
-
-** Consult LSP
-
-Preserve Consult's LSP symbol-search integration.
-Enable it together with the LSP client if revisiting that setup.
-#+begin_src emacs-lisp :tangle no
-(use-package consult-lsp
-  :bind
-  ("M-g s" . consult-lsp-symbols))
-#+end_src
-
-** Doxygen
-
-Keep the Doxygen navigation, insertion bindings, and project tag mapping.
-Its package recipe and system paths need review before activation.
-#+begin_src emacs-lisp
-(use-package doxymacs
-  :vc (:url "https://github.com/pniedzielski/doxymacs.git"
-            :rev :newest
-            :lisp-dir "lisp/")
-  :hook (c-mode-common-hook . doxymacs-mode)
-  :bind (:map c-mode-base-map
-              ;; Lookup documentation for the symbol at point.
-              ("C-c d ?" . doxymacs-lookup)
-              ;; Rescan your Doxygen tags file.
-              ("C-c d r" . doxymacs-rescan-tags)
-              ;; Prompt you for a Doxygen command to enter, and its
-              ;; arguments.
-              ("C-c d RET" . doxymacs-insert-command)
-              ;; Insert a Doxygen comment for the next function.
-              ("C-c d f" . doxymacs-insert-function-comment)
-              ;; Insert a Doxygen comment for the current file.
-              ("C-c d i" . doxymacs-insert-file-comment)
-              ;; Insert a Doxygen comment for the current member.
-              ("C-c d ;" . doxymacs-insert-member-comment)
-              ;; Insert a blank multi-line Doxygen comment.
-              ("C-c d m" . doxymacs-insert-blank-multiline-comment)
-              ;; Insert a blank single-line Doxygen comment.
-              ("C-c d s" . doxymacs-insert-blank-singleline-comment)
-              ;; Insert a grouping comments around the current region.
-              ("C-c d @" . doxymacs-insert-grouping-comments))
-  :custom
-  ;; Configure source code <-> Doxygen tag file <-> Doxygen HTML
-  ;; documentation mapping:
-  ;;   - Files in /home/me/project/foo/ have their tag file at
-  ;;     http://someplace.com/doc/foo/foo.xml, and HTML documentation
-  ;;     at http://someplace.com/doc/foo/.
-  ;;   - Files in /home/me/project/bar/ have their tag file at
-  ;;     ~/project/bar/doc/bar.xml, and HTML documentation at
-  ;;     file:///home/me/project/bar/doc/.
-  ;; This must be configured for Doxymacs to function!
-  (doxymacs-doxygen-dirs
-   '(("^/home/new/org/tu/OSPrak/osprak/"
-      "~/org/tu/OSPrak/osprak/tags.xml"
-      "~/org/tu/OSPrak/osprak/doc/html/."))))
-#+end_src
-
-** AI coding integrations
-
-Coding-assistant packages and menu bindings.
-#+begin_src emacs-lisp :tangle no
-(use-package ai-code
-  :config
-  (ai-code-set-backend 'codex)
-  ;; Optional: use a narrower transient menu on smaller frames
-  ;; (setq ai-code-menu-layout 'two-columns)
-  (global-set-key (kbd "C-c a") #'ai-code-menu)
-  (ai-code-magit-setup-transients))
-(use-package claude-code-ide
-  :bind ("C-c c" . claude-code-ide-menu))
-#+end_src
-
-** Org transclusion
-
-Embed content from other Org files with transclusion.
-#+begin_src emacs-lisp :tangle no
-(use-package org-transclusion)
-#+end_src
-
-** Roam UI
-
-Preserve the browser-based Roam UI recipe and synchronization options.
-The UI remains disabled even though its old command binding is retained.
-#+begin_src emacs-lisp :tangle no
-(use-package org-roam-ui
-  :straight
-  (:host github :repo "org-roam/org-roam-ui" :branch "main" :files ("*.el" "out"))
-  :after org-roam
-  ;;         normally we'd recommend hooking orui after org-roam, but since org-roam does not have
-  ;;         a hookable mode anymore, you're advised to pick something yourself
-  ;;         if you don't care about startup time, use
-  ;;  :hook (after-init . org-roam-ui-mode)
-  :config
-  (setq org-roam-ui-sync-theme t
-        org-roam-ui-follow t
-        org-roam-ui-update-on-save t
-        org-roam-ui-open-on-start t))
-#+end_src
-
-** Mathpix
-
-Convert screenshots to LaTeX with Mathpix.
-The credential fields are placeholders from the original configuration.
-#+begin_src emacs-lisp
-(use-package mathpix.el
-  :straight (:host github :repo "jethrokuan/mathpix.el")
-  :custom ((mathpix-app-id "app-id")
-           (mathpix-app-key "app-key"))
-  :bind
-  ("C-x m" . mathpix-screenshot))
-#+end_src
-
-** Deft
-
-Keep Deft's recursive Org-note search configuration.
-It remains an optional alternative to the active Roam and Consult setup.
-#+begin_src emacs-lisp
-(use-package deft
-  :after org
-  :bind
-  ("C-c n d" . deft)
-  :custom
-  (deft-recursive t)
-  (deft-use-filter-string-for-filename t)
-  (deft-default-extension "org")
-  (deft-directory org-roam-directory))
-#+end_src
-
-** LaTeX export template
-
-Custom Beamer template and table of contents.
-#+begin_src emacs-lisp :tangle no
-(use-package emacs
-  :straight nil
-  :after org
-  :custom
-  (org-latex-toc-command "\\tableofcontents\\pagebreak")
-  :config
-  (add-to-list 'org-latex-classes
-               '("tubeamer"
-                 "\\input{~/org/tu/TSHPS/template.tex}"
-                 ("\\section{%s}" . "\\section*{%s}")
-                 ("\\subsection{%s}" . "\\subsection*{%s}"))))
-#+end_src
-
-** Java
-
-Keep Java Tree-sitter and LSP settings as an inactive language setup.
-Review its dependencies before moving it into Development.
-#+begin_src emacs-lisp
-(use-package java-ts-mode
-  :hook
-  (java-ts-mode . (lambda () (my/enable-treesit-extras)))
-  :custom
-  (java-ts-mode-indent-offset 4)
-  :init
-  (add-to-list 'major-mode-remap-alist '(java-mode . java-ts-mode)))
-(use-package lsp-java
-  :hook
-  (java-ts-mode . lsp)
-  :custom
-  (lsp-java-vmargs '("-XX:+UseParallelGC" "-XX:GCTimeRatio=4"
-                     "-XX:AdaptiveSizePolicyWeight=90"
-                     "-Dsun.zip.disableMemoryMapping=true" "-Xmx4G" "-Xms500m")))
-#+end_src
-
-Symbol substitutions for Java.
-#+begin_src emacs-lisp
-(use-package emacs
-  :straight nil
-  :config
-  (my/prettify-set java-ts-mode
-    ("null"    null)
-    ("true"    true)
-    ("false"   false)
-    ("int"     integer)
-    ("float"   real)
-    ("String"  string)
-    ("boolean" boolean)
-    ("!"       not)
-    ("&&"      and)
-    ("||"      or)
-    ("for"     for)
-    ("return"  return)))
-#+end_src
-
-** Dante
-
-Haskell interaction and diagnostics with Dante.
-#+begin_src emacs-lisp :tangle no
-;; (use-package flymake-flycheck)
-(use-package dante
-
-  :after haskell-ts-mode
-  :commands 'dante-mode
-  :hook
-  ;; (haskell-ts-mode . flymake-mode)
-  (haskell-ts-mode . dante-mode)
-  (haskell-ts-mode . (lambda ()
-                       (setq eldoc-documentation-strategy
-                             #'eldoc-documentation-default)))
-  :init
-  ;; flycheck backend deprecated October 2022
-  (add-hook 'haskell-mode-hook 'flycheck-mode)
-
-  ;;(remove-hook 'flymake-diagnostic-functions 'flymake-proc-legacy-flymake)
-  :config
-  ;;(require 'flymake-flycheck)
-  ;; (defalias 'flymake-hlint
-  ;;   (flymake-flycheck-diagnostic-function-for 'haskell-hlint))
-  ;; (add-to-list 'flymake-diagnostic-functions 'flymake-hlint)
-  ;; flycheck backend deprecated October 2022
-  (flycheck-add-next-checker 'haskell-dante '(info . haskell-hlint)))
-#+end_src
-
-** Racket
-
-Racket language support.
-#+begin_src emacs-lisp
-(use-package racket-mode)
-#+end_src
-
-** Agda
-
-Keep the command that locates and loads Agda's Emacs integration.
-Activation requires the external Agda installation.
-#+begin_src emacs-lisp
-(load-file (let ((coding-system-for-read 'utf-8))
-             (shell-command-to-string "agda --emacs-mode locate")))
-#+end_src
-
-** Vue
-
-Preserve the Vue mode recipe and grammar source configuration.
-Review the grammar-list assignment before enabling this experiment.
-#+begin_src emacs-lisp
-(use-package vue-ts-mode
-  :straight (:type git
-                   :repo "https://github.com/8uff3r/vue-ts-mode"
-                   :files (:defaults "*.el"))
-  :config
-  ;; enable corfu-candidate-overlay mode globally
-  ;; this relies on having corfu-auto set to nil
-  (setq treesit-language-source-alist
-        '((vue "https://github.com/ikatyang/tree-sitter-vue")
-          (css "https://github.com/tree-sitter/tree-sitter-css")
-          (typescript "https://github.com/tree-sitter/tree-sitter-typescript" "master" "tsx/src")))
-  )
-#+end_src
-
-** GhostText
-
-Browser editing through Atomic Chrome and GhostText.
-#+begin_src emacs-lisp
-(use-package atomic-chrome)
-#+end_src
-
-** GLSL / Polymode
-
-Retain the unused GLSL/Polymode experiment for a future workflow discussion.
-Its original delimiters and broad file associations need review before activation.
-#+begin_src emacs-lisp
-(use-package glsl-mode)
-(use-package polymode
-
-  :config
-  ;; 1. Define the GLSL inner mode chunk
-  (define-innermode poly-glsl-string-innermode
-                    :mode 'glsl-mode
-                    ;; Adjust head-matcher regex to fit your preferred language's string style
-                    ;; This looks for a magic comment like /* glsl */ followed by a quote or backtick
-                    :head-matcher "\"\"\"\\W*#version "
-                    :tail-matcher "\"\"\""
-                    :head-mode 'host
-                    :tail-mode 'host)
-
-  ;; 2. Tie it to a host mode (e.g., C++ mode)
-  (define-hostmode poly-c++-hostmode :mode 'c++-mode)
-  (define-hostmode poly-haskell-hostmode :mode 'haskell-mode)
-
-  (define-polymode poly-c++-glsl-mode
-                   :hostmode 'poly-c++-hostmode
-                   :innermodes '(poly-glsl-string-innermode))
-
-  (define-polymode poly-haskell-glsl-mode
-                   :hostmode 'poly-haskell-hostmode
-                   :innermodes '(poly-glsl-string-innermode))
-
-  ;; 3. Associate your files with the new polymode
-  (add-to-list 'auto-mode-alist '("\\.cpp\\'" . poly-c++-glsl-mode))
-  (add-to-list 'auto-mode-alist '("\\.hs\\'" . poly-haskell-glsl-mode)))
 #+end_src
