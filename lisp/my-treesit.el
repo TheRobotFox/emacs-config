@@ -26,7 +26,8 @@
   '(my/treesit-resume-selection my/treesit-expand my/treesit-contract
     my/treesit-previous my/treesit-next my/treesit-child
     my/treesit-transpose-backward my/treesit-transpose-forward
-    my/treesit-edit-siblings my/treesit-filter-children)
+    my/treesit-edit-siblings my/treesit-filter-children
+    my/treesit-keep-matching my/treesit-select-matches)
   "Commands operating once on the complete selection set.")
 
 (defvar-local my/treesit--history nil
@@ -35,7 +36,9 @@
 
 (defvar-keymap my/treesit-filter-map
   "t" #'my/treesit-filter-children
-  "s" #'my/treesit-edit-siblings)
+  "s" #'my/treesit-edit-siblings
+  "k" #'my/treesit-keep-matching
+  "m" #'my/treesit-select-matches)
 
 (defvar-keymap my/treesit-action-map
   "s" #'my/treesit-resume-selection
@@ -53,7 +56,9 @@
 
 (defun my/treesit--selection-pre-command ()
   "Leave structural selection before ordinary commands execute."
-  (unless (memq this-command my/treesit--commands)
+  (unless (or (memq this-command my/treesit--commands)
+              (memq this-command '(universal-argument universal-argument-more
+                                   negative-argument digit-argument)))
     (my/treesit-selection-mode -1)))
 
 (defun my/treesit--selection-check ()
@@ -403,6 +408,70 @@ No matches leave selections unchanged."
       (my/treesit--edit-ranges ranges)
       (when (called-interactively-p 'any) (my/treesit-selection-mode 1))
       (message "Selected %d %s node(s)" (length (my/treesit--selections)) type))))
+
+(defvar my/treesit-search-history nil
+  "Patterns used to search structural selections.")
+
+(defun my/treesit--matching-ranges (scope expression keep)
+  "Return EXPRESSION matches within SCOPE, or SCOPE itself when KEEP."
+  (save-excursion
+    (save-restriction
+      (save-match-data
+        (narrow-to-region (car scope) (cdr scope))
+        (goto-char (point-min))
+        (if keep
+            (when (re-search-forward expression nil t) (list scope))
+          (let (ranges done)
+            (while (and (not done) (re-search-forward expression nil t))
+              (if (< (match-beginning 0) (match-end 0))
+                  (push (cons (match-beginning 0) (match-end 0)) ranges)
+                (if (eobp) (setq done t) (forward-char 1))))
+            (nreverse ranges)))))))
+
+(defun my/treesit--search-selections (pattern regexp keep)
+  "Search each selected scope for PATTERN, interpreting REGEXP when non-nil.
+KEEP retains whole matching selections; otherwise select nonempty matches.
+Respect `case-fold-search'.  Cancellation and failed searches preserve scopes."
+  (unless (treesit-parser-list)
+    (user-error "This buffer has no Tree-sitter parser"))
+  (let* ((state (my/treesit--state))
+         (scopes (my/treesit--map-selections
+                  (lambda ()
+                    (unless (use-region-p)
+                      (user-error "Every cursor needs an active region to search"))
+                    (cons (region-beginning) (region-end))))))
+    (setq pattern
+          (or pattern
+              (read-string (format "%s %s: "
+                                   (if keep "Keep selections containing" "Select matches of")
+                                   (if regexp "regexp" "text"))
+                           nil 'my/treesit-search-history)))
+    (unless (equal state (my/treesit--state))
+      (user-error "Buffer or selections changed while entering the search; try again"))
+    (when (string-empty-p pattern) (user-error "Enter a nonempty search pattern"))
+    (let* ((expression (if regexp pattern (regexp-quote pattern)))
+           (ranges (condition-case err
+                       (mapcan (lambda (scope)
+                                 (my/treesit--matching-ranges scope expression keep))
+                               scopes)
+                     (invalid-regexp
+                      (user-error "%s" (error-message-string err))))))
+      (my/treesit--edit-ranges ranges))))
+
+(defun my/treesit-keep-matching (&optional pattern regexp)
+  "Keep whole selections containing literal PATTERN.
+With a prefix argument, treat PATTERN as a regexp.  Prompt when PATTERN is nil."
+  (interactive (list nil current-prefix-arg))
+  (my/treesit--search-selections pattern regexp t)
+  (when (called-interactively-p 'any) (my/treesit-selection-mode 1)))
+
+(defun my/treesit-select-matches (&optional pattern regexp)
+  "Select occurrences of literal PATTERN inside all selected scopes.
+With a prefix argument, treat PATTERN as a regexp.  Ignore zero-width matches.
+Prompt when PATTERN is nil."
+  (interactive (list nil current-prefix-arg))
+  (my/treesit--search-selections pattern regexp nil)
+  (when (called-interactively-p 'any) (my/treesit-selection-mode 1)))
 
 (with-eval-after-load 'multiple-cursors-core
   (dolist (command my/treesit--commands)

@@ -551,11 +551,26 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
 (add-hook 'prog-mode-hook #'display-line-numbers-mode)
 #+end_src
 
+#+begin_src emacs-lisp
+(use-package hl-todo
+  :demand t
+  :bind (("M-g t" . my/consult-todos)
+         ("M-g T" . my/consult-project-todos))
+  :config
+  (require 'my-todo-search)
+  (global-hl-todo-mode 1))
+#+end_src
+
 ** Git
 
 #+begin_src emacs-lisp
 (use-package magit
-  :bind ("M-s g f" . magit-find-file))
+  :bind ("M-s g f" . magit-find-file)
+  :custom
+  (magit-display-buffer-function
+   (lambda (buffer)
+     (display-buffer buffer
+                     '(display-buffer-same-window)))))
 
 (use-package smerge-mode
   :straight nil
@@ -590,6 +605,13 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
   ("C-c l r" . eglot-rename)
   ("C-c l h" . eglot-show-call-hierarchy)
   ("C-c l f" . eglot-format))
+#+end_src
+
+#+begin_src emacs-lisp
+(use-package consult-eglot
+  :after eglot
+  :bind (:map eglot-mode-map
+              ([remap xref-find-apropos] . consult-eglot-symbols)))
 #+end_src
 
 ** Tree-sitter helpers
