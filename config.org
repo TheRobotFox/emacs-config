@@ -554,6 +554,7 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
   :bind (("C-x v f" . magit-find-file)
          ("C-x v c" . vc-find-conflicted-file))
   :custom
+  (magit-commit-diff-inhibit-same-window t)
   (magit-display-buffer-function
    (lambda (buffer)
      (display-buffer buffer
