@@ -11,6 +11,75 @@
 (declare-function yas-minor-mode "yasnippet" (&optional arg))
 (defvar yas-indent-line)
 
+(defun my/c-doc--banner (title width &optional boxed)
+  "Format TITLE to WIDTH as a line comment, or a box when BOXED."
+  (let ((title (string-trim title)))
+    (when (or (string-empty-p title) (string-match-p "[\n\r]" title))
+      (user-error "Enter a nonempty, single-line title"))
+    (if boxed
+        (let* ((inner (max (+ (string-width title) 2) (- width 5)))
+               (padding (- inner (string-width title)))
+               (left (/ padding 2))
+               (border (make-string inner ?─)))
+          (format "// ╭%s╮\n// │%s%s%s│\n// ╰%s╯"
+                  border (make-string left ?\s) title
+                  (make-string (- padding left) ?\s) border))
+      (let* ((padding (max 6 (- width (string-width title) 8)))
+             (left (/ padding 2)))
+        (format "// %s %s %s //"
+                (make-string left ?-) title (make-string (- padding left) ?-))))))
+
+(defun my/c-doc--banner-title ()
+  "Read a banner title, using the active region when available."
+  (if (use-region-p)
+      (buffer-substring-no-properties (region-beginning) (region-end))
+    (read-string "Banner title: ")))
+
+(defun my/c-doc--insert-banner (title boxed)
+  "Insert TITLE as a banner, using BOXED style when non-nil.
+Replace a selected standalone title; otherwise insert above the current line."
+  (barf-if-buffer-read-only)
+  (let* ((selected (use-region-p))
+         (start (if selected (region-beginning) (point)))
+         (end (and selected (region-end))))
+    (save-excursion
+      (goto-char start)
+      (when (nth 8 (syntax-ppss (line-beginning-position)))
+        (user-error "Insert the banner outside strings and comments"))
+      (when (and selected
+                 (or (not (string-blank-p
+                           (buffer-substring (line-beginning-position) start)))
+                     (not (string-blank-p
+                           (buffer-substring end (save-excursion
+                                                   (goto-char end) (line-end-position)))))))
+        (user-error "Select a standalone title, without surrounding code")))
+    (goto-char start)
+    (let* ((column (current-indentation))
+           (indent (buffer-substring-no-properties
+                    (line-beginning-position)
+                    (save-excursion (back-to-indentation) (point))))
+           (banner (my/c-doc--banner title (- fill-column column) boxed)))
+      (atomic-change-group
+        (beginning-of-line)
+        (when selected
+          (delete-region (point) (save-excursion (goto-char end) (line-beginning-position 2))))
+        (insert indent
+                (replace-regexp-in-string "\n" (concat "\n" indent) banner t t)
+                "\n"))
+      (setq deactivate-mark t))))
+
+;;;###autoload
+(defun my/c-doc-banner (title)
+  "Insert a one-line section banner for TITLE or the selected standalone text."
+  (interactive (list (my/c-doc--banner-title)))
+  (my/c-doc--insert-banner title nil))
+
+;;;###autoload
+(defun my/c-doc-box-banner (title)
+  "Insert a boxed section banner for TITLE or the selected standalone text."
+  (interactive (list (my/c-doc--banner-title)))
+  (my/c-doc--insert-banner title t))
+
 (defun my/c-doc--prefix (start)
   "Return (COLUMN . PREFIX) for the comment starting at START."
   (let ((origin (point)))
@@ -108,6 +177,19 @@
         (treesit-node-text name t))
       (user-error "Unsupported or unnamed template parameter")))
 
+(defun my/c-doc--signature-error-p (node)
+  "Whether NODE has parse errors in syntax needed for documentation."
+  (and (treesit-node-check node 'has-error)
+       (or (treesit-node-check node 'missing)
+           (equal (treesit-node-type node) "ERROR")
+           (cl-loop for index below (treesit-node-child-count node)
+                    for child = (treesit-node-child node index)
+                    for field = (treesit-node-field-name-for-child node index)
+                    thereis
+                    (and (not (member field '("body" "default_value")))
+                         (not (equal (treesit-node-type child) "field_initializer_list"))
+                         (my/c-doc--signature-error-p child))))))
+
 (defun my/c-doc--target ()
   "Find a declaration at point and return (DECLARATION . OUTER-NODE)."
   (unless (derived-mode-p 'c-ts-mode 'c++-ts-mode)
@@ -127,8 +209,8 @@
       (while (member (treesit-node-type (treesit-node-parent outer))
                      '("template_declaration"))
         (setq outer (treesit-node-parent outer)))
-      (when (treesit-node-check outer 'has-error)
-        (user-error "Declaration contains syntax errors"))
+      (when (my/c-doc--signature-error-p outer)
+        (user-error "Declaration signature contains syntax errors"))
       (cons node outer))))
 
 (defun my/c-doc--description (node outer)
