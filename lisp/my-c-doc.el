@@ -11,6 +11,68 @@
 (declare-function yas-minor-mode "yasnippet" (&optional arg))
 (defvar yas-indent-line)
 
+(defun my/c-doc--prefix (start)
+  "Return (COLUMN . PREFIX) for the comment starting at START."
+  (let ((origin (point)))
+    (save-excursion
+      (save-match-data
+        (goto-char start)
+        (let ((column (current-column)))
+          (if (looking-at "//[/!]*[ \t]*")
+              (cons column (match-string-no-properties 0))
+            (goto-char origin)
+            (back-to-indentation)
+            (if (and (looking-at "\\*+[ \t]*")
+                     (not (eq (char-after (match-end 0)) ?/)))
+                (cons (current-column) (match-string-no-properties 0))
+              (cons (1+ column) "* "))))))))
+
+(defun my/c-doc-newline ()
+  "Continue comment prefixes at point, or insert an indented code line."
+  (interactive)
+  (let* ((state (syntax-ppss))
+         (start (and (nth 4 state) (nth 8 state))))
+    (if (not start)
+        (newline-and-indent)
+      (pcase-let ((`(,column . ,prefix) (my/c-doc--prefix start)))
+        (delete-horizontal-space)
+        (newline)
+        (indent-to column)
+        (insert prefix)
+        (when (looking-at "[ \t]*\\*/")
+          (save-excursion
+            (delete-region (point) (progn (skip-chars-forward " \t") (point)))
+            (newline)
+            (indent-to column)))))))
+
+(defun my/c-doc-fill-paragraph (&optional justify)
+  "Reflow the current comment paragraph, preserving its delimiters."
+  (let* ((language (if (derived-mode-p 'c++-ts-mode) 'cpp 'c))
+         (node (treesit-node-at (point) language)))
+    (when (equal (treesit-node-type node) "comment")
+      (if (string-prefix-p "//" (treesit-node-text node t))
+          (fill-comment-paragraph justify)
+        (let ((start (treesit-node-start node))
+              (end (treesit-node-end node))
+              (fill-paragraph-function nil))
+          (save-excursion
+            (goto-char start)
+            (skip-chars-forward "/*!" end)
+            (setq start (if (looking-at "[ \t]*$")
+                            (line-beginning-position 2) (point)))
+            (goto-char end)
+            (when (looking-back "\\*/" (- end 2)) (backward-char 2))
+            (setq end (if (string-blank-p
+                           (buffer-substring (line-beginning-position) (point)))
+                          (line-beginning-position)
+                        (skip-chars-backward " \t" start)
+                        (point))))
+          (when (< start end)
+            (save-restriction
+              (narrow-to-region start end)
+              (fill-paragraph justify))))))
+    t))
+
 (defun my/c-doc--children (node)
   "Return the named children of NODE."
   (cl-loop for i below (treesit-node-child-count node t)
