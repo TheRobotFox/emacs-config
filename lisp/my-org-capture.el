@@ -1,8 +1,8 @@
-;;; my-org-capture.el --- Homework capture helper -*- lexical-binding: t; -*-
+;;; my-org-capture.el --- Task and homework capture -*- lexical-binding: t; -*-
 
 ;;; Commentary:
 ;; Select unused homework files without changing existing files or buffers.
-;; Capture templates and other Org preferences live in config.org.
+;; Template activation and context rules live in config.org.
 
 ;;; Code:
 (require 'seq)
@@ -35,6 +35,22 @@
       (set-buffer (find-file-noselect file))
       (goto-char (point-max))
       (insert (format "#+TITLE: %s Hausaufgabe %d\n" class number)))))
+
+(defconst my/org-capture-templates
+  '(("t" "Task: project / current node / inbox" entry
+     (function my/task-context-target)
+     "* TODO %?\n%a\n%i\n" :empty-lines 1)
+    ("p" "Project TODO" entry
+     (function my/task-project-target)
+     "* TODO %?\n%a\n%i\n" :empty-lines 1)
+    ("r" "Task in current or selected Roam node" entry
+     (function my/task-roam-target)
+     "* TODO %?\n%a\n%i\n" :empty-lines 1)
+    ("i" "Task in Roam inbox" entry
+     (function my/task-inbox-target)
+     "* TODO %?\n%a\n%i\n" :empty-lines 1)
+    ("h" "Homework" plain (function my/ha-file-for-class) ""))
+  "Capture templates for context-aware tasks and homework.")
 
 (provide 'my-org-capture)
 ;;; my-org-capture.el ends here

@@ -452,24 +452,6 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
   :config
   (avy-setup-default)
   (keymap-set isearch-mode-map "M-j" 'avy-isearch)
-  (defun my/isearch-forward-other-window (prefix)
-    "Function to isearch-forward in other-window."
-    (interactive "P")
-    (unless (one-window-p)
-      (save-excursion
-        (let ((next (if prefix -1 1)))
-          (other-window next)
-          (isearch-forward)
-          (other-window (- next))))))
-  (defun my/isearch-backward-other-window (prefix)
-    "Function to isearch-backward in other-window."
-    (interactive "P")
-    (unless (one-window-p)
-      (save-excursion
-        (let ((next (if prefix 1 -1)))
-          (other-window next)
-          (isearch-backward)
-          (other-window (- next))))))
   (keymap-set global-map "C-M-s" 'my/isearch-forward-other-window)
   (keymap-set global-map "C-M-r" 'my/isearch-backward-other-window))
 #+end_src
@@ -676,40 +658,6 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
   ("std::string"             string))
 #+end_src
 
-**** Source/header creation
-
-#+begin_src emacs-lisp
-(defun my/create-src-file ()
-  "Create a new implementation buffer for the current C or C++ header."
-  (interactive)
-  (unless buffer-file-name
-    (user-error "This buffer does not visit a file"))
-  (let* ((file buffer-file-name)
-         (ext (file-name-extension file))
-         (new-ext (pcase ext ("h" "c") ("hpp" "cpp")
-                         (_ (user-error "Expected a .h or .hpp header"))))
-         (target (file-name-with-extension file new-ext))
-         namespaces)
-    (when (or (file-exists-p target) (get-file-buffer target))
-      (user-error "Implementation file or buffer already exists: %s" target))
-    ;; Inspect the header before switching buffers.  Plain C needs no parser.
-    (when (equal ext "hpp")
-      (unless (treesit-parser-list)
-        (user-error "C++ namespace detection requires a Tree-sitter parser"))
-      (let ((node (treesit-node-at (point))))
-        (while node
-          (when (equal (treesit-node-type node) "namespace_definition")
-            (when-let* ((name (treesit-node-child-by-field-name node "name")))
-              (push (treesit-node-text name t) namespaces)))
-          (setq node (treesit-node-parent node)))))
-    (let* ((namespace (string-join namespaces "::"))
-           (contents (concat "#include \"" (file-name-nondirectory file) "\"\n\n"
-                             (unless (string-empty-p namespace)
-                               (format "namespace %s {\n} // %s" namespace namespace)))))
-      (find-file-other-window target)
-      (atomic-change-group (insert contents)))))
-#+end_src
-
 *** Haskell
 
 #+begin_src emacs-lisp
@@ -902,20 +850,7 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
 
 #+begin_src emacs-lisp
 (require 'my-org-capture)
-(setq org-capture-templates
-      '(("t" "Task: project / current node / inbox" entry
-         (function my/task-context-target)
-         "* TODO %?\n%a\n%i\n" :empty-lines 1)
-        ("p" "Project TODO" entry
-         (function my/task-project-target)
-         "* TODO %?\n%a\n%i\n" :empty-lines 1)
-        ("r" "Task in current or selected Roam node" entry
-         (function my/task-roam-target)
-         "* TODO %?\n%a\n%i\n" :empty-lines 1)
-        ("i" "Task in Roam inbox" entry
-         (function my/task-inbox-target)
-         "* TODO %?\n%a\n%i\n" :empty-lines 1)
-        ("h" "Homework" plain (function my/ha-file-for-class) "")))
+(setq org-capture-templates my/org-capture-templates)
 (setq org-capture-templates-contexts
       '(("p" (my/task-project-context-p))))
 #+end_src
@@ -1023,21 +958,6 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
   (olivetti-body-width 80)
   :custom-face
   (olivetti-fringe ((t (:inherit fringe :background "#ffffff"))))
-  :init
-  (defvar-local my/olivetti-previous-text-scale nil
-    "Text scale before enabling Olivetti, or nil when not saved.")
-  (defun my/olivetti-text-scale ()
-    "Apply focused-writing scale and restore it when leaving Olivetti."
-    (if olivetti-mode
-        (progn
-          (unless my/olivetti-previous-text-scale
-            (setq my/olivetti-previous-text-scale
-                  (if (bound-and-true-p text-scale-mode)
-                      text-scale-mode-amount 0)))
-          (text-scale-set 1.8))
-      (when my/olivetti-previous-text-scale
-        (text-scale-set my/olivetti-previous-text-scale)
-        (setq my/olivetti-previous-text-scale nil))))
   :config
   (keymap-unset olivetti-mode-map "C-c \\")
   (keymap-unset olivetti-mode-map "C-c |")
@@ -1077,39 +997,7 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
 **** Code comments
 
 #+begin_src emacs-lisp
-(defun my/latex-comment-preview-p ()
-  "Check comment syntax without disturbing preview-auto's delimiter match."
-  (save-excursion
-    (save-match-data (nth 4 (syntax-ppss)))))
-
-(defun my/latex-comment-preview-setup ()
-  "Enable comment previews with a cached copy of the shared TeX preamble."
-  (interactive)
-  (require 'preview-auto)
-  (unless (and (local-variable-p 'TeX-master) (stringp TeX-master))
-    (let* ((directory
-            (expand-file-name
-             (concat ".cache/latex-comments/"
-                     (secure-hash 'sha1 (or buffer-file-name (buffer-name))) "/")
-             user-emacs-directory))
-           (master (expand-file-name "master.tex" directory)))
-      (make-directory directory t)
-      (copy-file (expand-file-name "latex/preview-master.tex" user-emacs-directory)
-                 master t)
-      (setq-local TeX-master master)))
-  (setq-local preview-protect-point t
-              preview-auto-cache-preamble nil
-              preview-auto-check-function #'my/latex-comment-preview-p
-              preview-locating-previews-message nil
-              preview-visibility-style 'off-point
-              preview-keep-stale-images nil
-              preview-LaTeX-command-replacements '(preview-LaTeX-disable-pdfoutput))
-  (preview-auto-mode 1))
-
-(defun my/latex-comment-preview-auto-enable ()
-  "Start comment previews in programming modes other than TeX."
-  (unless (derived-mode-p 'tex-mode)
-    (my/latex-comment-preview-setup)))
+(require 'my-latex-preview)
 
 (use-package preview-auto
   :straight (:host github :repo "ultronozm/preview-auto.el")
@@ -1194,11 +1082,8 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
 
     "i" #'org-roam-node-insert
 
-    "r" #'org-roam-buffer-toggle
-
-    "t" #'my/roam-task-capture
-    "T" #'org-roam-tag-add
-    "P" #'my/project-link-note
+    "t" #'org-roam-tag-add
+    "p" #'my/project-link-note
     "a" #'org-roam-alias-add
 
     "C" #'org-id-get-create
@@ -1217,33 +1102,8 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
 *** Completion display
 
 #+begin_src emacs-lisp
-;; Completion hierarchy adapted from Doom Emacs.
 (with-eval-after-load 'org-roam
-  (cl-defmethod org-roam-node-doom-filetitle ((node org-roam-node))
-    "Return the value of \"#+title:\" (if any) from file that NODE resides in.
-      If there's no file-level title in the file, return empty string."
-    (or (if (= (org-roam-node-level node) 0)
-            (org-roam-node-title node)
-          (org-roam-node-file-title node))
-        ""))
-  (cl-defmethod org-roam-node-doom-hierarchy ((node org-roam-node))
-    "Return hierarchy for NODE, constructed of its file title, OLP and direct title.
-        If some elements are missing, they will be stripped out."
-    (let ((title     (org-roam-node-title node))
-          (olp       (org-roam-node-olp   node))
-          (level     (org-roam-node-level node))
-          (filetitle (org-roam-node-doom-filetitle node))
-          (separator (propertize org-eldoc-breadcrumb-separator 'face 'shadow)))
-      (cl-case level
-        ;; node is a top-level file
-        (0 filetitle)
-        ;; node is a level 1 heading
-        (1 (concat (propertize filetitle 'face '(shadow italic))
-                   separator title))
-        ;; node is a heading with an arbitrary outline path
-        (t (concat (propertize filetitle 'face '(shadow italic))
-                   separator (propertize (string-join olp separator) 'face '(shadow italic))
-                   separator title)))))
+  (require 'my-org-roam)
   (setq org-roam-node-display-template (concat "${doom-hierarchy:*} " (propertize "${tags:15}" 'face 'org-tag))))
 #+end_src
 
@@ -1251,10 +1111,6 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
 
 #+begin_src emacs-lisp
 (with-eval-after-load 'org-roam
-  (defun my/org-roam-preview-latex ()
-    "Render LaTeX fragments in the current Roam backlink buffer."
-    (org-latex-preview--preview-region
-     org-latex-preview-process-default (point-min) (point-max)))
   (add-hook 'org-roam-buffer-postrender-functions #'my/org-roam-preview-latex))
 #+end_src
 
@@ -1262,7 +1118,7 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
 
 #+begin_src emacs-lisp
 (use-package consult-org-roam
-  :after (org-roam consult)
+  :after org-roam
   :demand t
   :init
   ;; Upstream preview cleanup reads this before collecting Roam buffers.
@@ -1378,15 +1234,6 @@ Inbox and Sent are fetched with mbsync; credentials live in =~/.config/isync/=.
   :config
   (keymap-set pdf-view-mode-map "C-s" #'isearch-forward)
   (keymap-set pdf-view-mode-map "C-r" #'isearch-backward))
-#+end_src
-
-** Emacs Everywhere
-
-#+begin_src emacs-lisp
-(use-package emacs-everywhere
-  :defer t
-  :custom
-  (emacs-everywhere-app-info-function #'emacs-everywhere--app-info-linux-sway))
 #+end_src
 
 ** Matrix

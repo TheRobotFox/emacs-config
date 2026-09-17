@@ -131,5 +131,22 @@ Do not scan undisplayed agenda files or temporary export/metadata buffers."
   (interactive "p")
   (dotimes (_ count) (my/org--insert-item 'above)))
 
+(defvar olivetti-mode)
+
+(defvar-local my/olivetti-previous-text-scale nil
+  "Text scale before enabling Olivetti, or nil when not saved.")
+(defun my/olivetti-text-scale ()
+  "Apply focused-writing scale and restore it when leaving Olivetti."
+  (if olivetti-mode
+      (progn
+        (unless my/olivetti-previous-text-scale
+          (setq my/olivetti-previous-text-scale
+                (if (bound-and-true-p text-scale-mode)
+                    text-scale-mode-amount 0)))
+        (text-scale-set 1.8))
+    (when my/olivetti-previous-text-scale
+      (text-scale-set my/olivetti-previous-text-scale)
+      (setq my/olivetti-previous-text-scale nil))))
+
 (provide 'my-org-editing)
 ;;; my-org-editing.el ends here

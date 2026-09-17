@@ -27,7 +27,8 @@
 (defun my/popup-documentation-p (buffer)
   "Whether BUFFER contains documentation rather than interactive output."
   (with-current-buffer buffer
-    (or (derived-mode-p 'help-mode)
+    (or (derived-mode-p 'help-mode 'org-roam-mode)
+        (string-match-p "\\`\\*org-roam\\(?:\\*\\|: \\)" (buffer-name))
         (string-match-p "\\` *\\*eldoc\\*" (buffer-name)))))
 
 (defun my/popup-process-p (buffer)
@@ -208,28 +209,38 @@ Outside a project, use a shell associated with the source directory."
       buffer))))
 
 (defun my/popup-repl ()
-  "Select the source's REPL, or choose an existing process in its project.
+  "Toggle Roam backlinks for Org, otherwise select the source's project REPL.
 Start language runtimes with their normal package commands first."
   (interactive)
-  (pcase-let* ((`(,source . ,root) (my/popup--context))
-               (buffer
-                (with-current-buffer (window-buffer source)
-                  (or (my/popup--associated-repl)
-                      (let ((candidates
-                             (cl-remove-if-not
-                              (lambda (buf)
-                                (and (my/popup-process-p buf)
-                                     (with-current-buffer buf
-                                       (and (not (derived-mode-p 'eshell-mode 'shell-mode 'term-mode 'vterm-mode))
-                                            (equal root (my/popup-root))))))
-                              (buffer-list))))
-                        (cond ((null candidates)
-                               (user-error "No project REPL; start one with your language's normal command"))
-                              ((null (cdr candidates)) (car candidates))
-                              (t (get-buffer (completing-read "Project REPL: "
-                                                              (mapcar #'buffer-name candidates) nil t)))))))))
-    (with-current-buffer buffer (setq-local my/popup-project-root root))
-    (my/popup-select buffer)))
+  (if (with-current-buffer (window-buffer (my/popup-source-window))
+        (derived-mode-p 'org-mode))
+      (my/popup-roam)
+    (pcase-let* ((`(,source . ,root) (my/popup--context))
+		 (buffer
+                  (with-current-buffer (window-buffer source)
+                    (or (my/popup--associated-repl)
+			(let ((candidates
+                               (cl-remove-if-not
+				(lambda (buf)
+                                  (and (my/popup-process-p buf)
+                                       (with-current-buffer buf
+					 (and (not (derived-mode-p 'eshell-mode 'shell-mode 'term-mode 'vterm-mode))
+                                              (equal root (my/popup-root))))))
+				(buffer-list))))
+                          (cond ((null candidates)
+				 (user-error "No project REPL; start one with your language's normal command"))
+				((null (cdr candidates)) (car candidates))
+				(t (get-buffer (completing-read "Project REPL: "
+								(mapcar #'buffer-name candidates) nil t)))))))))
+      (with-current-buffer buffer (setq-local my/popup-project-root root))
+      (my/popup-select buffer))))
+
+(defun my/popup-roam ()
+  "Toggle Org-roam backlinks for the editing window."
+  (interactive)
+  (require 'org-roam)
+  (with-selected-window (my/popup-source-window)
+    (org-roam-buffer-toggle)))
 
 (defun my/popup-eldoc ()
   "Toggle the full Eldoc pane for the source window, without selecting it.
@@ -243,6 +254,25 @@ New documentation requests use Eldoc's normal asynchronous display pipeline."
         (if buffer
             (progn (my/popup-display buffer) (eldoc t))
           (eldoc t))))))
+
+(defun my/isearch-forward-other-window (prefix)
+  "Function to isearch-forward in other-window."
+  (interactive "P")
+  (unless (one-window-p)
+    (save-excursion
+      (let ((next (if prefix -1 1)))
+        (other-window next)
+        (isearch-forward)
+        (other-window (- next))))))
+(defun my/isearch-backward-other-window (prefix)
+  "Function to isearch-backward in other-window."
+  (interactive "P")
+  (unless (one-window-p)
+    (save-excursion
+      (let ((next (if prefix 1 -1)))
+        (other-window next)
+        (isearch-backward)
+        (other-window (- next))))))
 
 (provide 'my-window-workflow)
 ;;; my-window-workflow.el ends here
