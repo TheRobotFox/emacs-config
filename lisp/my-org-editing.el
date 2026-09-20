@@ -10,6 +10,19 @@
 (require 'org-list)
 (require 'org-fold)
 (require 'ox)
+(require 'face-remap)
+
+(defun my/org-beispiel-export-options (options backend)
+  "Define the Beispiel environment when exporting with LaTeX."
+  (if (org-export-derived-backend-p backend 'latex)
+      (plist-put options :latex-header-extra
+                 (concat (plist-get options :latex-header-extra)
+                         "\n\\newenvironment{beispiel}{\\begin{quote}\\textbf{Beispiel.}\\quad}{\\end{quote}}\n"))
+    options))
+
+(defun my/org-typography ()
+  "Apply note typography without changing fonts in other buffers."
+  (setq-local line-spacing 0.12))
 
 (defun my/org--block-fold-state (element)
   "Return `hide', `off', or nil for ELEMENT's initial folding."
@@ -132,18 +145,51 @@ Do not scan undisplayed agenda files or temporary export/metadata buffers."
   (dotimes (_ count) (my/org--insert-item 'above)))
 
 (defvar olivetti-mode)
+(defvar olivetti-body-width)
+(defvar my/org-reading-scale 1.8)
+(defvar my/org-reading-max-scale 4.0)
+
+(defun my/org-reflow-paragraph ()
+  "Join paragraph lines for visual wrapping, preserving Org structure."
+  (interactive)
+  (let ((fill-column most-positive-fixnum))
+    (call-interactively #'org-fill-paragraph)))
+
+(defun my/org-reading-scale-for-window (window)
+  "Choose a capped reading scale for WINDOW, allowing for its full width."
+  (if (and (one-window-p t (window-frame window))
+           (integerp olivetti-body-width))
+      (max my/org-reading-scale
+           (min my/org-reading-max-scale
+                (/ (round (* 10 (/ (log (/ (* 0.65 (window-total-width window))
+                                           olivetti-body-width))
+                                   (log text-scale-mode-step))))
+                   10.0)))
+    my/org-reading-scale))
+
+(defun my/org-update-reading-scale (&optional _window)
+  "Fit reading text to the layout without oscillating between visible windows."
+  (when olivetti-mode
+    (let* ((windows (get-buffer-window-list (current-buffer) nil t))
+           (scale (if windows
+                      (apply #'min (mapcar #'my/org-reading-scale-for-window windows))
+                    my/org-reading-scale)))
+      (unless (= text-scale-mode-amount scale)
+        (text-scale-set scale)))))
 
 (defvar-local my/olivetti-previous-text-scale nil
   "Text scale before enabling Olivetti, or nil when not saved.")
 (defun my/olivetti-text-scale ()
-  "Apply focused-writing scale and restore it when leaving Olivetti."
+  "Adapt reading scale to window changes and restore it when leaving Olivetti."
   (if olivetti-mode
       (progn
         (unless my/olivetti-previous-text-scale
           (setq my/olivetti-previous-text-scale
                 (if (bound-and-true-p text-scale-mode)
                     text-scale-mode-amount 0)))
-        (text-scale-set 1.8))
+        (add-hook 'window-size-change-functions #'my/org-update-reading-scale nil t)
+        (my/org-update-reading-scale))
+    (remove-hook 'window-size-change-functions #'my/org-update-reading-scale t)
     (when my/olivetti-previous-text-scale
       (text-scale-set my/olivetti-previous-text-scale)
       (setq my/olivetti-previous-text-scale nil))))

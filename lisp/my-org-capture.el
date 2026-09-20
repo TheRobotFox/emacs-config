@@ -1,4 +1,4 @@
-;;; my-org-capture.el --- Task and homework capture -*- lexical-binding: t; -*-
+;;; my-org-capture.el --- Task, idea, and homework capture -*- lexical-binding: t; -*-
 
 ;;; Commentary:
 ;; Select unused homework files without changing existing files or buffers.
@@ -49,8 +49,11 @@
     ("i" "Task in Roam inbox" entry
      (function my/task-inbox-target)
      "* TODO %?\n%a\n%i\n" :empty-lines 1)
+    ("b" "Backlog idea or plan" entry
+     (file+headline "~/org/ideas.org" "Backlog")
+     "* %?\nAdded: %U\n%a\n%i\n" :empty-lines 1)
     ("h" "Homework" plain (function my/ha-file-for-class) ""))
-  "Capture templates for context-aware tasks and homework.")
+  "Capture templates for context-aware tasks, backlog ideas, and homework.")
 
 (provide 'my-org-capture)
 ;;; my-org-capture.el ends here
