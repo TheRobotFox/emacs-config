@@ -99,6 +99,14 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
 (keymap-global-set "C-x C-k l" #'list-keyboard-macros)
 #+end_src
 
+** Performance diagnostics
+
+#+begin_src emacs-lisp
+(use-package my-performance
+  :straight nil
+  :commands (my/performance-start my/performance-stop my/performance-captures))
+#+end_src
+
 ** General keybindings
 
 #+begin_src emacs-lisp
@@ -456,12 +464,50 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
 ** Documentation
 
 #+begin_src emacs-lisp
+(use-package my-documentation
+  :straight nil
+  :bind ("C-h D" . my/documentation-lookup))
+
 (use-package devdocs
-  :bind ("C-h D" . devdocs-lookup)
-  :commands (devdocs-install devdocs-peruse)
+  :commands (devdocs-lookup devdocs-install devdocs-peruse)
   :hook
   ((c-mode c-ts-mode) . (lambda () (setq-local devdocs-current-docs '("c"))))
   ((c++-mode c++-ts-mode) . (lambda () (setq-local devdocs-current-docs '("cpp")))))
+#+end_src
+
+** Reading layout
+
+Org and EWW share centered margins and adaptive text size. Toggle elsewhere with =M-x olivetti-mode=.
+
+#+begin_src emacs-lisp
+(use-package olivetti
+  :hook
+  ((org-mode eww-mode) . olivetti-mode)
+  (olivetti-mode . my/reading-layout)
+  :custom
+  (olivetti-body-width 80)
+  :init
+  (autoload 'my/reading-layout "my-reading")
+  :config
+  (keymap-unset olivetti-mode-map "C-c \\")
+  (keymap-unset olivetti-mode-map "C-c |")
+  (keymap-unset olivetti-mode-map "C-c {")
+  (keymap-unset olivetti-mode-map "C-c }"))
+#+end_src
+
+** Web reading
+
+EWW uses a compact reading layout; =R= toggles its built-in reader view.
+
+#+begin_src emacs-lisp
+(use-package eww
+  :straight nil
+  :commands (eww eww-open-file)
+  :hook (eww-mode . my/eww-reading-setup)
+  :custom
+  (eww-header-line-format "%t")
+  :init
+  (autoload 'my/eww-reading-setup "my-eww"))
 #+end_src
 
 * Editing tools
@@ -702,7 +748,7 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
   :straight `(:host nil
                     :repo "https://codeberg.org/rahguzar/consult-hoogle.git"
                     :files (:defaults "*.el"))
-  :bind ("C-h h" . consult-hoogle))
+  :commands consult-hoogle)
 
 (add-hook 'haskell-mode-hook #'my/haskell-prettify-setup)
 (my/prettify-set haskell-mode
@@ -982,27 +1028,6 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
   (org-agenda-finalize . org-modern-agenda)
   :config
   (set-face-attribute 'org-modern-block-name nil :slant 'italic))
-#+end_src
-
-*** Focused writing
-
-#+begin_src emacs-lisp
-(use-package olivetti
-  :hook
-  (org-mode . olivetti-mode)
-  (olivetti-mode . my/olivetti-text-scale)
-  :custom
-  (olivetti-body-width 80)
-  :init
-  (setq my/org-reading-scale 1.8
-        my/org-reading-max-scale 4.0)
-  :custom-face
-  (olivetti-fringe ((t (:inherit fringe :background "#ffffff"))))
-  :config
-  (keymap-unset olivetti-mode-map "C-c \\")
-  (keymap-unset olivetti-mode-map "C-c |")
-  (keymap-unset olivetti-mode-map "C-c {")
-  (keymap-unset olivetti-mode-map "C-c }"))
 #+end_src
 
 ** Links and images
