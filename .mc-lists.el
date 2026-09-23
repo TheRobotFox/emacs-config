@@ -8,6 +8,7 @@
 	c-electric-lt-gt
 	c-electric-paren
 	c-electric-semi&comma
+	embrace-change
 	end-of-visual-line
 	indent-for-tab-command
 	kill-region

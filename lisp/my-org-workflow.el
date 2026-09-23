@@ -159,7 +159,7 @@ When ROAM is non-nil, assign a file ID for Roam indexing."
   (set-buffer (my/task--prepare-file
                (my/task--project-file root)
                (file-name-nondirectory (directory-file-name root))))
-  (my/task--tasks-heading))
+  (goto-char (point-min)))
 
 (defun my/task-inbox-target ()
   "Position capture in the Roam inbox."
@@ -251,6 +251,26 @@ When ROAM is non-nil, assign a file ID for Roam indexing."
     (my/task--remember-root root)
     (pop-to-buffer-same-window buffer)))
 
+(defun org-dblock-write:project-tasks (params)
+  "List tasks from PARAMS' :file as linked checkboxes, without copying headings."
+  (let* ((file (expand-file-name (or (plist-get params :file)
+                                   (user-error "Project tasks need :file"))))
+         (org-inhibit-startup t)
+         (rows
+          (when (my/task--available-file-p file)
+            (org-map-entries
+             (lambda ()
+               (when (org-get-todo-state)
+                 (let ((id (org-entry-get nil "ID")))
+                   (concat " * " (if (org-entry-is-done-p) "[X] " "[ ] ")
+                           (org-link-make-string
+                            (if id (concat "id:" id)
+                              (format "file:%s::%d" file (line-number-at-pos)))
+                            (org-get-heading t t nil t)) "\n"))))
+             nil (list file) 'archive 'comment))))
+    (insert (or (when-let* ((tasks (delq nil rows))) (apply #'concat tasks))
+                "No tasks.\n"))))
+
 (defun my/project-note ()
   "Open or create the current project's file-level Roam node."
   (interactive)
@@ -270,9 +290,9 @@ When ROAM is non-nil, assign a file ID for Roam indexing."
         (find-file file)
         (insert (format ":PROPERTIES:\n:ID: %s\n:PROJECT_ROOT: %s\n:END:\n#+title: %s\n#+filetags: :project:\n\n"
                         id root title))
-        (insert (org-link-make-string (concat "file:" root) "Repository") "\n"
-                (org-link-make-string (concat "file:" (my/task--project-file root)) "Project tasks")
-                "\n\n* Context\n\n* Decisions\n")
+        (let ((tasks (my/task--project-file root)))
+          (insert "* " (org-link-make-string (concat "file:" tasks) "Tasks")
+                  (format " [/]\n#+BEGIN: project-tasks :file %S\n#+END:\n" tasks)))
         (save-buffer)
         (org-roam-db-update-file file)))))
 
