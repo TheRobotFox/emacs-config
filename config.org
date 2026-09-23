@@ -486,6 +486,8 @@ Org and EWW share centered margins and adaptive text size. Toggle elsewhere with
   (olivetti-mode . my/reading-layout)
   :custom
   (olivetti-body-width 80)
+  :custom-face
+  (olivetti-fringe ((t (:inherit fringe :background "#ffffff"))))
   :init
   (autoload 'my/reading-layout "my-reading")
   :config
