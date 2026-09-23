@@ -96,6 +96,7 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
 (global-visual-line-mode t)
 (repeat-mode t)
 (keymap-global-unset "C-x C-c")
+(keymap-global-set "C-x C-k l" #'list-keyboard-macros)
 #+end_src
 
 ** General keybindings
@@ -448,8 +449,8 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
 (use-package phi-search
   :config
   (keymap-global-set "M-%" 'phi-replace-query)
-  (keymap-global-set "C-s" 'phi-search)
-  (keymap-global-set "C-r" 'phi-search-backward))
+  (keymap-global-set "C-s" #'isearch-forward)
+  (keymap-global-set "C-r" #'isearch-backward))
 #+end_src
 
 ** Documentation
@@ -515,6 +516,9 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
 #+begin_src emacs-lisp
 (use-package multiple-cursors
   :config
+  ;; Phi is needed only when moving multiple cursors.
+  (keymap-set mc/keymap "C-s" #'phi-search)
+  (keymap-set mc/keymap "C-r" #'phi-search-backward)
   (defvar-keymap mc-repeat-map
     :repeat t
     "n" #'mc/mark-next-like-this
