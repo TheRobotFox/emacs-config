@@ -466,7 +466,26 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
 #+begin_src emacs-lisp
 (use-package my-documentation
   :straight nil
+  :commands my/dictionary-at-point
   :bind ("C-h D" . my/documentation-lookup))
+
+(use-package dictionary
+  :straight nil
+  :commands dictionary-search
+  :init
+  (with-eval-after-load 'text-mode
+    (keymap-set text-mode-map "C-h ." #'my/dictionary-at-point))
+  (with-eval-after-load 'eww
+    (keymap-set eww-mode-map "C-h ." #'my/dictionary-at-point))
+  (with-eval-after-load 'olivetti
+    (keymap-set olivetti-mode-map "C-h ." #'my/dictionary-at-point)
+    (keymap-set olivetti-mode-map "C-h D" #'my/documentation-lookup))
+  :custom
+  (dictionary-server "dict.org")
+  (dictionary-default-dictionary "gcide")
+  (dictionary-display-definition-function nil)
+  (dictionary-read-word-function #'dictionary-completing-read-word)
+  (dictionary-read-dictionary-function #'dictionary-completing-read-dictionary))
 
 (use-package devdocs
   :commands (devdocs-lookup devdocs-install devdocs-peruse)

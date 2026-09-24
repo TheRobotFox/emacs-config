@@ -11,6 +11,7 @@
     (haskell-ts-mode . consult-hoogle)
     (emacs-lisp-mode . describe-symbol)
     (text-mode . dictionary-search)
+    (eww-mode . dictionary-search)
     (prog-mode . devdocs-lookup)
     (t . devdocs-lookup))
   "Documentation command symbols by derived mode; first match wins.
@@ -19,10 +20,20 @@ The mode t is the fallback."
 
 (defun my/documentation-command ()
   "Return the documentation command for the current major mode."
-  (seq-some (lambda (entry)
+  (if (bound-and-true-p olivetti-mode)
+      #'dictionary-search
+    (seq-some (lambda (entry)
               (when (or (eq (car entry) t) (derived-mode-p (car entry)))
                 (cdr entry)))
-            my/documentation-functions))
+              my/documentation-functions)))
+
+;;;###autoload
+(defun my/dictionary-at-point ()
+  "Display the definition of the word at point without prompting."
+  (interactive)
+  (let ((word (thing-at-point 'word t)))
+    (unless word (user-error "No word at point"))
+    (dictionary-search word)))
 
 ;;;###autoload
 (defun my/documentation-lookup (&optional choose)
