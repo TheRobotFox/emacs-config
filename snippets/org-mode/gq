@@ -2,6 +2,6 @@
 # name: gq
 # key: gq
 # --
-\begin{gather*}
+\[\begin{gathered}
 $0
-\end{gather*}
+\end{gathered}\]

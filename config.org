@@ -776,6 +776,7 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
   ("."      composition)
   ("->"     arrow)
   ("<-"     left-arrow)
+  ("Nat"    natural)
   ("Int"    integer)
   ("Double" real)
   ("Bool"   boolean))

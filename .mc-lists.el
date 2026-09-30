@@ -15,14 +15,13 @@
 	kill-visual-line
 	org-beginning-of-line
 	org-delete-char
+	org-self-insert-command
 	sp-mark-sexp
+	sp-remove-active-pair-overlay
 	))
 
 (setq mc/cmds-to-run-once
       '(
-	c-electric-delete-forward
-	eshell-send-input
-	org-self-insert-command
 	pixel-scroll-precision
 	pixel-scroll-start-momentum
 	))
