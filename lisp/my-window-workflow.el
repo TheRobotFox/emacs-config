@@ -9,6 +9,21 @@
 (require 'project)
 (require 'eldoc)
 
+(declare-function python-shell-get-process "python")
+(declare-function sly-current-connection "sly")
+(declare-function sly-mrepl "sly-mrepl")
+(declare-function haskell-session-maybe "haskell-session")
+(declare-function haskell-session-process "haskell-session")
+(declare-function haskell-session-get "haskell-session")
+(declare-function haskell-process-process "haskell-process")
+(declare-function org-note-graph-node-key "org-note-graph" (node))
+(declare-function org-note-graph-current-node "org-note-graph-ui" (&optional db))
+(declare-function org-note-graph-refresh "org-note-graph-store" (&optional force))
+(declare-function my/org-note-graph-backlinks "my-org-note-graph" ())
+(declare-function my/org-note-graph-backlink-query "my-org-note-graph" (db context))
+(defvar org-note-graph--view-context)
+(defvar org-note-graph--view-query)
+
 (defgroup my/window-workflow nil "Supporting windows." :group 'windows)
 (defcustom my/popup-right-min-width 140
   "Minimum frame width in columns for a supporting pane on the right."
@@ -27,7 +42,9 @@
 (defun my/popup-documentation-p (buffer)
   "Whether BUFFER contains documentation rather than interactive output."
   (with-current-buffer buffer
-    (or (derived-mode-p 'help-mode 'org-roam-mode 'dictionary-mode)
+    (or (derived-mode-p 'help-mode 'org-roam-mode 'dictionary-mode
+                        'org-note-graph-view-mode)
+        (equal (buffer-name) "*Note Graph: Unresolved*")
         ;; Dictionary displays its buffer before initializing the major mode.
         (string-match-p "\\`\\*Dictionary\\*\\(?:<[0-9]+>\\)?\\'" (buffer-name))
         (string-match-p "\\`\\*org-roam\\(?:\\*\\|: \\)" (buffer-name))
@@ -110,6 +127,11 @@ Documentation uses slot -1; processes and other output share slot 0."
   "Display and select BUFFER's supporting pane."
   (select-window (or (my/popup-display buffer)
                      (user-error "No room for a supporting pane"))))
+
+(defun my/popup-open-source (buffer)
+  "Open BUFFER in the editing window belonging to the selected pane."
+  (select-window (my/popup-source-window))
+  (switch-to-buffer buffer))
 
 (defun my/popup-toggle-side ()
   "Move visible supporting panes between right and bottom.
@@ -211,12 +233,12 @@ Outside a project, use a shell associated with the source directory."
       buffer))))
 
 (defun my/popup-repl ()
-  "Toggle Roam backlinks for Org, otherwise select the source's project REPL.
+  "Toggle note backlinks for Org, otherwise select the source's project REPL.
 Start language runtimes with their normal package commands first."
   (interactive)
   (if (with-current-buffer (window-buffer (my/popup-source-window))
         (derived-mode-p 'org-mode))
-      (my/popup-roam)
+      (my/popup-notes)
     (pcase-let* ((`(,source . ,root) (my/popup--context))
 		 (buffer
                   (with-current-buffer (window-buffer source)
@@ -237,12 +259,25 @@ Start language runtimes with their normal package commands first."
       (with-current-buffer buffer (setq-local my/popup-project-root root))
       (my/popup-select buffer))))
 
-(defun my/popup-roam ()
-  "Toggle Org-roam backlinks for the editing window."
+(defun my/popup-notes ()
+  "Toggle the graph backlink query for the editing window."
   (interactive)
-  (require 'org-roam)
-  (with-selected-window (my/popup-source-window)
-    (org-roam-buffer-toggle)))
+  (require 'my-org-note-graph)
+  (let* ((source (my/popup-source-window))
+         (key (with-current-buffer (window-buffer source)
+                (org-note-graph-node-key
+                 (or (org-note-graph-current-node (org-note-graph-refresh))
+                     (user-error "No graph node in the editing window")))))
+         (window (cl-find-if
+                  (lambda (window)
+                    (with-current-buffer (window-buffer window)
+                      (and (derived-mode-p 'org-note-graph-view-mode)
+                           (equal org-note-graph--view-context key)
+                           (eq org-note-graph--view-query #'my/org-note-graph-backlink-query))))
+                  (window-list nil 'no-mini))))
+    (if window (quit-window nil window)
+      (select-window source)
+      (my/org-note-graph-backlinks))))
 
 (defun my/popup-eldoc ()
   "Toggle the full Eldoc pane for the source window, without selecting it.

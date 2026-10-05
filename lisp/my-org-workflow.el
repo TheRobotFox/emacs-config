@@ -1,9 +1,8 @@
-;;; my-org-workflow.el --- Project tasks and Roam context -*- lexical-binding: t; -*-
+;;; my-org-workflow.el --- Project notes and task capture -*- lexical-binding: t; -*-
 
 ;;; Commentary:
-;; Project work lives in task.org; personal work can stay in any Roam node.
-;; Agenda views discover both without copying tasks.  No new package is needed.
-;; Project association is a file-level PROJECT_ROOT property in a Roam note.
+;; Project notes live in the repository; tasks are ordinary README headings.
+;; project.el supplies repository context and remembers agenda sources.
 
 ;;; Code:
 (require 'cl-lib)
@@ -16,8 +15,8 @@
 (require 'subr-x)
 
 (defgroup my/org-workflow nil "Personal project and task workflow." :group 'org)
-(defcustom my/task-file-name "task.org"
-  "Task file relative to each project root."
+(defcustom my/project-note-file "README.org"
+  "Org note relative to each project root, also containing its Tasks heading."
   :type 'string)
 (defcustom my/task-legacy-files
   '("~/org/todos.org" "~/org/questions.org" "~/org/ideas.org" "~/org/notes.org")
@@ -27,9 +26,10 @@
   "Additional Org files to include in task views."
   :type '(repeat file))
 (defvar org-roam-directory)
-(defvar my/task--root-cache (make-hash-table :test #'equal))
 (defvar my/task-project-agenda-blocks nil
   "Org block-agenda specification for the project view, set in config.org.")
+(defvar my/project-note-hook nil
+  "Hook run in the repository note opened by the project commands.")
 
 (defun my/task--canonical-root (directory)
   "Normalize DIRECTORY, preserving a trailing slash."
@@ -63,53 +63,10 @@
                                    (my/task--roam-file-p file)) file)))
                     (buffer-list)))))))
 
-(defun my/task--buffer-root (&optional file)
-  "Read the file-level PROJECT_ROOT property in the current Org buffer.
-Use FILE, or the visited file, to resolve relative project paths."
-  (when (and (or file buffer-file-name) (derived-mode-p 'org-mode))
-    (org-with-wide-buffer
-     (goto-char (point-min))
-     (when-let* ((root (org-entry-get nil "PROJECT_ROOT")))
-       (my/task--canonical-root
-        (expand-file-name root (file-name-directory (or file buffer-file-name))))))))
-
-(defun my/task--file-root (file)
-  "Return FILE's project association, caching unchanged files."
-  (let* ((buffer (get-file-buffer file))
-         (stamp (if buffer (with-current-buffer buffer (buffer-chars-modified-tick))
-                  (file-attribute-modification-time (file-attributes file))))
-         (key (list buffer stamp))
-         (cached (gethash file my/task--root-cache)))
-    (if (equal key (car cached)) (cdr cached)
-      (let ((root (if buffer
-                      (with-current-buffer buffer (my/task--buffer-root))
-                    (with-temp-buffer
-                      (insert-file-contents file)
-                      ;; Reading metadata must not render LaTeX, align tables,
-                      ;; or initialize document visibility in every Roam file.
-                      (let ((org-inhibit-startup t))
-                        (delay-mode-hooks (org-mode)))
-                      ;; Keep the scratch buffer non-visiting: marking it as
-                      ;; FILE would make killing it prompt to save its contents.
-                      (my/task--buffer-root file)))))
-        (puthash file (cons key root) my/task--root-cache)
-        root))))
-
-(defun my/project-from-roam (directory)
-  "Supply project.el context for a project-associated Roam buffer."
-  (when (and (my/task--roam-file-p)
-             (equal (expand-file-name directory) (expand-file-name default-directory)))
-    (when-let* ((root (my/task--buffer-root))
-                (_ (file-directory-p root)))
-      (let ((project-find-functions (remq #'my/project-from-roam project-find-functions)))
-        (or (project-current nil root) (cons 'transient root))))))
-
 (defun my/task-project-root (&optional prompt)
   "Resolve current project context, optionally PROMPT for another project.
-Unassociated Roam notes do not inherit the notes repository as their project."
-  (let ((root (if (and (my/task--roam-file-p)
-                       (not project-current-directory-override))
-                  (my/task--buffer-root)
+Personal notes do not inherit the notes repository as their project."
+  (let ((root (when (or project-current-directory-override (not (my/task--roam-file-p)))
                 (when-let* ((project (project-current nil))) (project-root project)))))
     (when (and (not root) prompt)
       (setq root (funcall project-prompter)))
@@ -118,16 +75,17 @@ Unassociated Roam notes do not inherit the notes repository as their project."
         (user-error "Project directory is unavailable: %s" root))
       (my/task--canonical-root root))))
 
-(defun my/task--project-file (root)
-  "Select ROOT's task file, honoring an existing tasks.org convention."
-  (let ((preferred (expand-file-name my/task-file-name root))
-        (alternate (expand-file-name "tasks.org" root)))
-    (if (and (not (my/task--available-file-p preferred))
-             (my/task--available-file-p alternate)) alternate preferred)))
+(defun my/project-note-path (root)
+  "Return ROOT's Org note, preserving the case of an existing filename."
+  (expand-file-name
+   (or (seq-find (lambda (name) (string-equal-ignore-case name my/project-note-file))
+                 (directory-files root nil nil t))
+       my/project-note-file)
+   root))
 
-(defun my/task--prepare-file (file title &optional roam)
+(defun my/task--prepare-file (file title &optional node)
   "Visit FILE without displaying it; initialize a new empty file with TITLE.
-When ROAM is non-nil, assign a file ID for Roam indexing."
+When NODE is non-nil, assign a file ID for stable links."
   (make-directory (file-name-directory file) t)
   (let ((buffer (find-file-noselect file)))
     (with-current-buffer buffer
@@ -135,7 +93,7 @@ When ROAM is non-nil, assign a file ID for Roam indexing."
       (org-with-wide-buffer
        (when (= (point-min) (point-max))
          (insert "#+title: " title "\n#+category: " title "\n\n")
-         (when roam (goto-char (point-min)) (org-id-get-create)))))
+         (when node (goto-char (point-min)) (org-id-get-create)))))
     buffer))
 
 (defun my/task--tasks-heading ()
@@ -154,12 +112,9 @@ When ROAM is non-nil, assign a file ID for Roam indexing."
   (project-remember-project (cons 'transient root)))
 
 (defun my/task--project-target (root)
-  "Position capture in ROOT's task file."
-  (my/task--remember-root root)
-  (set-buffer (my/task--prepare-file
-               (my/task--project-file root)
-               (file-name-nondirectory (directory-file-name root))))
-  (goto-char (point-min)))
+  "Position capture under Tasks in ROOT's repository note."
+  (set-buffer (my/project-note-buffer root))
+  (my/task--tasks-heading))
 
 (defun my/task-inbox-target ()
   "Position capture in the Roam inbox."
@@ -175,7 +130,7 @@ When ROAM is non-nil, assign a file ID for Roam indexing."
     (user-error nil)))
 
 (defun my/task-project-target ()
-  "Position capture in the originating buffer's project task file."
+  "Position capture under Tasks in the originating project's note."
   (let* ((origin (org-capture-get :original-buffer))
          (root (when (buffer-live-p origin)
                  (with-current-buffer origin (my/task-project-root)))))
@@ -230,7 +185,7 @@ When ROAM is non-nil, assign a file ID for Roam indexing."
   (org-capture nil "r"))
 
 (defun my/project-task-capture ()
-  "Capture a task in the current or selected project's task file."
+  "Capture a task under Tasks in the current or selected project's note."
   (interactive)
   (let* ((root (my/task-project-root t))
          ;; This explicit command also supports selecting a project from outside one.
@@ -242,86 +197,38 @@ When ROAM is non-nil, assign a file ID for Roam indexing."
     (org-capture nil "p")))
 
 (defun my/project-tasks ()
-  "Open the current or selected project's task file."
+  "Open the Tasks heading in the current or selected project's note."
   (interactive)
-  (let* ((root (my/task-project-root t))
-         (buffer (my/task--prepare-file
-                  (my/task--project-file root)
-                  (file-name-nondirectory (directory-file-name root)))))
-    (my/task--remember-root root)
-    (pop-to-buffer-same-window buffer)))
+  (my/task--project-target (my/task-project-root t))
+  (pop-to-buffer-same-window (current-buffer))
+  (org-fold-show-context 'agenda))
 
-(defun org-dblock-write:project-tasks (params)
-  "List tasks from PARAMS' :file as linked checkboxes, without copying headings."
-  (let* ((file (expand-file-name (or (plist-get params :file)
-                                   (user-error "Project tasks need :file"))))
-         (org-inhibit-startup t)
-         (rows
-          (when (my/task--available-file-p file)
-            (org-map-entries
-             (lambda ()
-               (when (org-get-todo-state)
-                 (let ((id (org-entry-get nil "ID")))
-                   (concat " * " (if (org-entry-is-done-p) "[X] " "[ ] ")
-                           (org-link-make-string
-                            (if id (concat "id:" id)
-                              (format "file:%s::%d" file (line-number-at-pos)))
-                            (org-get-heading t t nil t)) "\n"))))
-             nil (list file) 'archive 'comment))))
-    (insert (or (when-let* ((tasks (delq nil rows))) (apply #'concat tasks))
-                "No tasks.\n"))))
+(defun my/project-note-buffer (root)
+  "Visit ROOT's repository note and run `my/project-note-hook' at file level."
+  (let ((buffer (my/task--prepare-file
+                 (my/project-note-path root)
+                 (file-name-nondirectory (directory-file-name root)) t)))
+    (my/task--remember-root root)
+    (with-current-buffer buffer
+      (unless (file-exists-p buffer-file-name) (save-buffer))
+      (org-with-wide-buffer
+       (goto-char (point-min))
+       (run-hooks 'my/project-note-hook)))
+    buffer))
 
 (defun my/project-note ()
-  "Open or create the current project's file-level Roam node."
+  "Open or create the current project's repository note."
   (interactive)
-  (require 'org-roam)
-  (let* ((root (my/task-project-root t))
-         (matches (seq-filter (lambda (file) (equal (my/task--file-root file) root))
-                              (my/task--roam-files))))
-    (my/task--remember-root root)
-    (if matches
-        (find-file (if (cdr matches) (completing-read "Project note: " matches nil t)
-                     (car matches)))
-      (let* ((title (read-string "Project title: "
-                                 (file-name-nondirectory (directory-file-name root))))
-             (id (org-id-new))
-             (file (expand-file-name (concat "project-" id ".org") org-roam-directory)))
-        (make-directory org-roam-directory t)
-        (find-file file)
-        (insert (format ":PROPERTIES:\n:ID: %s\n:PROJECT_ROOT: %s\n:END:\n#+title: %s\n#+filetags: :project:\n\n"
-                        id root title))
-        (let ((tasks (my/task--project-file root)))
-          (insert "* " (org-link-make-string (concat "file:" tasks) "Tasks")
-                  (format " [/]\n#+BEGIN: project-tasks :file %S\n#+END:\n" tasks)))
-        (save-buffer)
-        (org-roam-db-update-file file)))))
-
-(defun my/project-link-note ()
-  "Associate this Roam file with a selected project, preserving its contents."
-  (interactive)
-  (unless (my/task--roam-file-p) (user-error "Open a Roam note first"))
-  (let ((root (my/task--canonical-root (funcall project-prompter))))
-    (unless (file-directory-p root) (user-error "Project directory does not exist"))
-    (my/task--remember-root root)
-    (org-with-wide-buffer
-     (goto-char (point-min))
-     (org-id-get-create)
-     (org-entry-put nil "PROJECT_ROOT" root))
-    (save-buffer)
-    (when (featurep 'org-roam) (org-roam-db-update-file buffer-file-name))
-    (message "Note associated with %s" root)))
+  (pop-to-buffer-same-window (my/project-note-buffer (my/task-project-root t))))
 
 (defun my/task-agenda-files ()
-  "Discover existing task sources without depending on Roam's TODO index."
+  "Discover personal notes and known projects' Org notes for the agenda."
   (let* ((notes (my/task--roam-files))
-         (roots (delete-dups
-                 (append (project-known-project-roots)
-                         (delq nil (mapcar #'my/task--file-root notes)))))
+         (roots (project-known-project-roots))
          (files (append notes my/task-legacy-files my/task-extra-files
                         (cl-loop for root in roots
-                                 unless (file-remote-p root)
-                                 append (list (expand-file-name my/task-file-name root)
-                                              (expand-file-name "tasks.org" root))))))
+                                 when (and (not (file-remote-p root)) (file-directory-p root))
+                                 collect (my/project-note-path root)))))
     (delete-dups
      (mapcar #'file-truename
              (seq-filter #'my/task--available-file-p (mapcar #'expand-file-name files))))))
@@ -329,6 +236,21 @@ When ROAM is non-nil, assign a file ID for Roam indexing."
 (defun my/task-refresh-agenda (&rest _)
   "Refresh task discovery before opening the agenda."
   (setq org-agenda-files (my/task-agenda-files)))
+
+(defun my/task--refresh-vc-on-display (window)
+  "Initialize deferred version-control state when displayed in WINDOW."
+  (when (eq (window-buffer window) (current-buffer))
+    (vc-refresh-state)
+    (remove-hook 'window-buffer-change-functions #'my/task--refresh-vc-on-display t)))
+
+(defun my/task-prepare-agenda-buffers (prepare &rest args)
+  "Run PREPARE with ARGS, deferring new buffers' VC checks until display."
+  (let ((find-file-hook
+         (cl-substitute
+          (lambda ()
+            (add-hook 'window-buffer-change-functions #'my/task--refresh-vc-on-display nil t))
+          #'vc-refresh-state find-file-hook)))
+    (apply prepare args)))
 
 (defun my/task--inbox-p ()
   "Whether the current entry is in the general Roam inbox."
@@ -353,11 +275,7 @@ When ROAM is non-nil, assign a file ID for Roam indexing."
 
 (defun my/task--skip-other-project (root)
   "Skip this heading unless it belongs to ROOT, without skipping its children."
-  (unless (or (and buffer-file-name (file-in-directory-p buffer-file-name root))
-              (equal (when-let* ((value (org-entry-get nil "PROJECT_ROOT" t)))
-                       (my/task--canonical-root
-                        (expand-file-name value (file-name-directory buffer-file-name))))
-                     root))
+  (unless (and buffer-file-name (file-in-directory-p buffer-file-name root))
     (save-excursion (outline-next-heading) (point))))
 
 (defun my/project-task-agenda (&optional _match)

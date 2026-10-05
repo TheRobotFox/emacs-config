@@ -1,0 +1,120 @@
+#+title: Org Note Graph
+
+A graph model and writing interface for Org, supporting user-defined
+connections between nodes and groups of nodes.
+
+* Graph foundations
+
+- Org text is authoritative; the database is a rebuildable index.
+- Files provide note-level nodes, addressed by ID when available, otherwise
+  by file path. Headings participate through explicit Org ID registration.
+  Reading and searching do not create IDs. Subheading link insertion can
+  explicitly register its chosen target.
+- Text and links belong to their nearest participating ancestor, falling
+  back to the file node. Ordinary links form directed references.
+- Each heading node records its nearest participating parent, otherwise the
+  file node. File nodes have no parent. Containment follows the outline;
+  it is separate from authored references.
+- Discovery starts from configured Org sources and follows local Org file
+  links. Missing targets remain recorded without changing authored text.
+
+* Declared nodes and headings
+
+A declared node or heading (a collection) is associated with a registered
+userland specification through its local =GRAPH_TYPE= property.
+
+Specifications supply creation conventions, named actions and, when needed,
+their own tables and query functions. Declaration selects a registered
+specification and asks only for settings that it requires locally.
+
+The core indexes ordinary references inside these locations like anywhere
+else. Additional interpretation belongs entirely to the specification;
+there is no universal entry format or required projection into graph edges.
+
+* Queries
+
+Queries are ordinary Elisp functions with an explicit database argument.
+They compose through node identities: node queries return lists of distinct
+keys, compared with =equal=. Use native sequence/set operations for composition.
+Schema-specific results can be projected to node keys when needed.
+
+Shared operations provide node selection, forward/backward references and
+parent/child navigation. A traversal function accepts a neighbor function;
+direction and transitivity belong to query composition, independently of schemas.
+Reference occurrences retain source locations for navigation and diagnostics.
+
+Userland composes named query functions and chooses completion candidates.
+Completion and result views consume these queries; neither defines a universal
+search policy. Functions live in Lisp configuration, not executable note text.
+
+* Index lifecycle
+
+An in-memory SQLite database holds core and specification-owned tables.
+Parsing uses Org's parser, sharing parsed sources with extensions. Refresh
+reads live buffer contents when available and reparses only changed sources.
+
+The extension lifecycle has two callbacks: initialize tables and
+replace data for changed sources. Refresh replaces affected core rows, then
+calls extensions with changed sources and the updated database in one transaction.
+Removed sources and vanished declarations must also reach those callbacks.
+Remove old rows for all affected sources before inserting replacements, so
+moving an ID between files does not collide with its previous location.
+
+Remove indexed data when its source text is removed or changed. Preserve
+references to missing targets so they can be diagnosed and repaired.
+Failed refreshes retain the previous index and report the error.
+Changes to registered specifications rebuild the database.
+
+* Writing interface
+
+Actions receive a declared target and caller context, including the current
+node when available. Userland commands select eligible targets through queries
+and invoke a named action; adding links and capturing are action conventions.
+Use Org's editing and capture lifecycle, with small shared helpers for locating
+nodes, formatting links and appending list items.
+
+A link-list specification supplies an append-link action; ordinary reference
+indexing supplies its graph connections. Labels attach quoted strings to linked
+nodes; only the configured alias collection supplies alternate search names.
+Capture targets create standalone notes and append their links.
+Collection catalogs capture child headings as link-list collections, linking
+them from the catalog and the configured Collections node.
+
+* Code and trial
+
+- Core: =org-note-graph-model.el=, =-store.el= and =-query.el=.
+- Shared writing helpers: =-ui.el=, =-edit.el= and the optional =-consult.el=.
+- Userland: =-templates.el= and =-labels.el= demonstrate specifications;
+  =my-org-note-graph.el= defines personal queries, commands and bindings.
+  =my-org-note-graph-query.el= implements the symbolic query frontend.
+
+Under =C-c n=: =f= finds, =i= inserts, =C= explicitly registers a heading,
+=d= declares a collection, =t= adds the current node, =T= captures to a
+supporting collection, =c= opens Org capture, and =a= chooses any supported action. =q= reads a
+query expression; =h= reports unresolved references. =C-u C-c n i= offers
+subheadings and registers the chosen target if needed. Use native Org
+commands for reorganization.
+=C-u C-c n t= selects a note or registered heading to add to a collection.
+Declaration appends a link to the configured Collections node; during capture,
+this waits for successful finalization. Save the collection buffer to persist it.
+
+Queries use =->= / =<-= for references, =-*>= / =<*-= for reachability
+(including the starting nodes), and =?= for a path's result. Combine sets
+with =&=, =|=, =\= and =!= (complement against all indexed nodes).
+=@= binds tightest, then =!=, paths, =&= / =\=, then =|=; parentheses group.
+=.= means the current node, =*= all nodes. Bare names search titles/aliases;
+quoted names match exactly, ignoring case. Use =M-i= to insert a precise link.
+=label@Table= searches labels in the selected table; =(flow | cut)@Table=
+matches either label, while =&= requires both. Tables are ordinary node-set
+expressions, including stable links and named sets; group compound expressions.
+Each path has one hole. Semicolon-separated clauses can define =?x=;
+repeated definitions intersect, and =$x= reads the set. Dependencies must be
+acyclic; the final clause returns the result.
+With =A -$x> ?=, only intermediate nodes must belong to =$x=; direct links
+and the starting nodes still qualify. =-Name>= uses a title/alias search as
+the intermediate set. Bind more complex sets with a named hole first.
+
+In query results: =e= edits, =g= refreshes, =f= selects a node to visit, and
+=i= selects a link to insert at the original writing position. Direct commands
+=my/org-note-graph-query-find= and =my/org-note-graph-query-insert= share the
+same query input and history. Selection still permits capturing a new title.

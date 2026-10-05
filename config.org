@@ -852,7 +852,7 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
 
 #+begin_src emacs-lisp
 (setopt org-default-notes-file (expand-file-name "notes.org" org-directory)
-        org-startup-folded 'nofold)
+        org-startup-folded 'fold)
 
 (setf (alist-get 'file org-link-frame-setup) 'find-file)
 #+end_src
@@ -869,6 +869,7 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
         diary-file "~/org/diary"
         org-agenda-tags-column 0)
 (advice-add 'org-agenda :before #'my/task-refresh-agenda)
+(advice-add 'org-agenda-prepare-buffers :around #'my/task-prepare-agenda-buffers)
 (keymap-global-set "C-c a" #'org-agenda)
 
 (org-add-agenda-custom-command
@@ -958,8 +959,9 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
 
 *** Project context and navigation
 
+Project notes live in the repository's =README.org=; tasks are ordinary headings there.
+
 #+begin_src emacs-lisp
-(add-hook 'project-find-functions #'my/project-from-roam)
 (keymap-set project-prefix-map "n" #'my/project-note)
 (keymap-set project-prefix-map "t" #'my/project-tasks)
 (keymap-set project-prefix-map "a" #'my/project-task-overview)
@@ -1116,7 +1118,7 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
 *** Diagrams and short proofs
 
 #+begin_src emacs-lisp
-;; Fold diagrams on first display; #+ATTR_ORG: :fold yes/no overrides a block.
+;; Fold diagrams, proofs and examples; #+ATTR_ORG: :fold yes/no overrides a block.
 (add-hook 'org-mode-hook #'my/org-defer-note-folding)
 
 ;; C-c C-, p inserts a proof; PDF export needs amsthm in the note.
@@ -1166,26 +1168,9 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
   :custom
   (org-roam-directory (file-truename "~/org/roam/"))
   :config
-  (defvar-keymap org-node-map
-    "f" #'org-roam-node-find
-
-    "i" #'org-roam-node-insert
-
-    "t" #'org-roam-tag-add
-    "p" #'my/project-link-note
-    "a" #'org-roam-alias-add
-
-    "C" #'org-id-get-create
-    "c" #'org-capture
-    "e" #'org-roam-extract-subtree
-
-    ;; Dailies
-    "d" #'org-roam-dailies-capture-today)
   (org-roam-db-autosync-mode 1)
   (require 'org-roam-protocol)
-  (require 'org-roam-export)
-  :bind-keymap
-  ("C-c n" . org-node-map))
+  (require 'org-roam-export))
 #+end_src
 
 *** Collections
@@ -1195,6 +1180,30 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
   :commands org-dblock-write:org-roam-ql)
 (require 'my-org-collections)
 (add-hook 'org-mode-hook #'my/org-collections-setup)
+#+end_src
+
+*** Directed graph prototype
+
+#+begin_src emacs-lisp
+(use-package org-note-graph
+  :straight nil
+  :after org-roam
+  :demand t
+  :custom
+  (org-note-graph-roots (list org-roam-directory))
+  (org-note-graph-directory org-roam-directory)
+  (org-note-graph-display-function #'my/popup-select)
+  (org-note-graph-open-function #'my/popup-open-source)
+  :config
+  (require 'my-org-note-graph)
+  (setq my/org-note-graph-collections-node "id:2584eff8-ab41-4dc6-a24b-edd30711a943"
+        my/org-note-graph-alias-collection "id:fba21393-c5e8-4984-a681-ab44ab56d3bf"
+        my/org-note-graph-project-collection "id:b117e06d-421d-43d0-9ab6-f70ba8a076b4")
+  (add-hook 'my/project-note-hook #'my/org-note-graph-collect-project)
+  (require 'org-note-graph-consult)
+  (setq org-note-graph-read-function #'org-note-graph-consult-read)
+  (setq org-node-map my/org-note-graph-map)
+  (keymap-global-set "C-c n" org-node-map))
 #+end_src
 
 *** Completion display
@@ -1229,11 +1238,7 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
   (consult-org-roam-mode 1)
   (consult-customize
    consult-org-roam-forward-links
-   :preview-key "M-.")
-  (keymap-set org-node-map "b" #'consult-org-roam-backlinks)
-  (keymap-set org-node-map "B" #'consult-org-roam-backlinks-recursive)
-  (keymap-set org-node-map "l" #'consult-org-roam-forward-links)
-  (keymap-set org-node-map "g" #'consult-org-roam-search))
+   :preview-key "M-."))
 #+end_src
 
 *** File preview appearance

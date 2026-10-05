@@ -29,13 +29,15 @@
   (pcase (org-export-read-attribute :attr_org element :fold)
     ("yes" 'hide)
     ("no" 'off)
-    (_ (when (and (eq (org-element-type element) 'src-block)
-                  (member (org-element-property :language element)
-                          '("d2" "dot" "plantuml")))
+    (_ (when (pcase (org-element-type element)
+               ('src-block
+                (member (org-element-property :language element) '("d2" "dot" "plantuml")))
+               ('special-block
+                (member (downcase (org-element-property :type element)) '("beispiel" "proof"))))
          'hide))))
 
 (defun my/org-fold-note-blocks ()
-  "Fold D2, Dot and PlantUML blocks, honoring per-block ATTR_ORG overrides.
+  "Fold diagram sources, Beispiel and proof blocks by default.
 Put #+ATTR_ORG: :fold yes or :fold no immediately above any block to
 override its initial visibility.  Other blocks are left alone by default."
   (interactive)
@@ -46,17 +48,27 @@ override its initial visibility.  Other blocks are left alone by default."
              (state (my/org--block-fold-state element)))
         (when state (org-fold-hide-block-toggle state nil element)))))))
 
+(defvar-local my/org--startup-visibility-pending nil
+  "Whether background loading skipped Org's initial visibility setup.")
+
 (defun my/org--fold-note-blocks-on-display (window)
-  "Apply block folding once when this buffer is first displayed in WINDOW."
+  "Apply pending startup visibility and block folding on first display in WINDOW."
   ;; Window change hooks can also run in the buffer being switched away from.
   (when (eq (window-buffer window) (current-buffer))
+    (when my/org--startup-visibility-pending
+      (org-with-wide-buffer
+       (org-cycle-set-startup-visibility)
+       (unless (org-before-first-heading-p)
+         (org-fold-show-context 'agenda)))
+      (setq my/org--startup-visibility-pending nil))
     (my/org-fold-note-blocks)
     (remove-hook 'window-buffer-change-functions
                  #'my/org--fold-note-blocks-on-display t)))
 
 (defun my/org-defer-note-folding ()
-  "Arrange block folding on first display, including agenda-loaded notes.
+  "Arrange initial folding on first display, including agenda-loaded notes.
 Do not scan undisplayed agenda files or temporary export/metadata buffers."
+  (setq my/org--startup-visibility-pending org-inhibit-startup)
   (add-hook 'window-buffer-change-functions
             #'my/org--fold-note-blocks-on-display nil t))
 

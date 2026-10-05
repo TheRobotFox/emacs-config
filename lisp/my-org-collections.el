@@ -14,8 +14,7 @@
                   (org-roam-node-title node)) "\n")))
 
 (defun my/org-collections-refresh ()
-  "Refresh collections and project task counts without modifying unchanged text.
-Task summaries include edits in open task buffers.  Generate in a scratch
+  "Refresh collections without modifying unchanged text.  Generate in a scratch
 buffer so failed queries cannot erase existing results."
   (interactive)
   (unless buffer-read-only
@@ -25,7 +24,7 @@ buffer so failed queries cannot erase existing results."
         (goto-char (point-min))
         (let ((case-fold-search t)
               (source (current-buffer)))
-          (when (re-search-forward "^[ \t]*#\\+begin: \\(org-roam-ql\\|roam-list\\|project-tasks\\)\\_>" nil t)
+          (when (re-search-forward "^[ \t]*#\\+begin: \\(org-roam-ql\\|roam-list\\)\\_>" nil t)
             (with-temp-buffer
               (insert-buffer-substring source)
               (let ((org-inhibit-startup t)) (delay-mode-hooks (org-mode)))
@@ -34,17 +33,12 @@ buffer so failed queries cannot erase existing results."
                                          'dynamic-block #'identity)))
                 (goto-char (org-element-property :post-affiliated block))
                 (when (and (looking-at org-dblock-start-re)
-                           (member (match-string 1) '("org-roam-ql" "roam-list" "project-tasks")))
-                  (require (if (equal (match-string 1) "project-tasks")
-                               'my-org-workflow 'org-roam-ql))
+                           (member (match-string 1) '("org-roam-ql" "roam-list")))
+                  (require 'org-roam-ql)
                   (org-update-dblock)))
-              (org-map-dblocks
-               (lambda ()
-                 (when (looking-at "[ \t]*#\\+begin: project-tasks\\_>")
-                   (org-update-checkbox-count))))
               (let ((result (current-buffer)))
                 (with-current-buffer source
-                  (replace-buffer-contents result))))))))))
+                  (replace-region-contents (point-min) (point-max) result))))))))))
 
 (defun my/org-collections-on-display (window)
   "Refresh collections when their buffer is displayed in WINDOW."
