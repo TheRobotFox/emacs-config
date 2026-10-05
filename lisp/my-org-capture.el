@@ -43,10 +43,10 @@
     ("p" "Project TODO" entry
      (function my/task-project-target)
      "* TODO %?\n%a\n%i\n" :empty-lines 1)
-    ("r" "Task in current or selected Roam node" entry
-     (function my/task-roam-target)
+    ("r" "Task in current or selected note" entry
+     (function my/task-note-target)
      "* TODO %?\n%a\n%i\n" :empty-lines 1)
-    ("i" "Task in Roam inbox" entry
+    ("i" "Task in notes inbox" entry
      (function my/task-inbox-target)
      "* TODO %?\n%a\n%i\n" :empty-lines 1)
     ("b" "Backlog idea or plan" entry

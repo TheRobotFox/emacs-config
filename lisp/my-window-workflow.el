@@ -42,12 +42,11 @@
 (defun my/popup-documentation-p (buffer)
   "Whether BUFFER contains documentation rather than interactive output."
   (with-current-buffer buffer
-    (or (derived-mode-p 'help-mode 'org-roam-mode 'dictionary-mode
+    (or (derived-mode-p 'help-mode 'dictionary-mode
                         'org-note-graph-view-mode)
         (equal (buffer-name) "*Note Graph: Unresolved*")
         ;; Dictionary displays its buffer before initializing the major mode.
         (string-match-p "\\`\\*Dictionary\\*\\(?:<[0-9]+>\\)?\\'" (buffer-name))
-        (string-match-p "\\`\\*org-roam\\(?:\\*\\|: \\)" (buffer-name))
         (string-match-p "\\` *\\*eldoc\\*" (buffer-name)))))
 
 (defun my/popup-process-p (buffer)

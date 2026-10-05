@@ -855,6 +855,8 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
         org-startup-folded 'fold)
 
 (setf (alist-get 'file org-link-frame-setup) 'find-file)
+(with-eval-after-load 'ox-html
+  (setq org-html-prefer-user-labels t))
 #+end_src
 
 ** Tasks, agenda, and capture
@@ -863,6 +865,7 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
 
 #+begin_src emacs-lisp
 (require 'my-org-workflow)
+(setopt my/notes-directory (file-truename "~/org/roam/"))
 ;; Agenda discovery must not render every note's LaTeX previews.
 (setopt org-agenda-inhibit-startup t
         org-agenda-include-diary t
@@ -1157,43 +1160,18 @@ Project notes live in the repository's =README.org=; tasks are ordinary headings
 (add-hook 'org-babel-after-execute-hook #'org-redisplay-inline-images)
 #+end_src
 
-** Roam
-
-*** Storage and commands
-
-#+begin_src emacs-lisp
-(use-package org-roam
-  :after org
-  :demand t
-  :custom
-  (org-roam-directory (file-truename "~/org/roam/"))
-  :config
-  (org-roam-db-autosync-mode 1)
-  (require 'org-roam-protocol)
-  (require 'org-roam-export))
-#+end_src
-
-*** Collections
-
-#+begin_src emacs-lisp
-(use-package org-roam-ql
-  :commands org-dblock-write:org-roam-ql)
-(require 'my-org-collections)
-(add-hook 'org-mode-hook #'my/org-collections-setup)
-#+end_src
-
-*** Org Note Graph
+** Note graph
 
 #+begin_src emacs-lisp
 (use-package org-note-graph
   :straight (:host github :repo "TheRobotFox/org-note-graph"
              :local-repo "~/projects/org-note-graph"
              :files (:defaults "extensions/*.el"))
-  :after org-roam
+  :after org
   :demand t
   :custom
-  (org-note-graph-roots (list org-roam-directory))
-  (org-note-graph-directory org-roam-directory)
+  (org-note-graph-roots (list my/notes-directory))
+  (org-note-graph-directory my/notes-directory)
   (org-note-graph-display-function #'my/popup-select)
   (org-note-graph-open-function #'my/popup-open-source)
   :config
@@ -1204,43 +1182,7 @@ Project notes live in the repository's =README.org=; tasks are ordinary headings
   (add-hook 'my/project-note-hook #'my/org-note-graph-collect-project)
   (require 'org-note-graph-consult)
   (setq org-note-graph-read-function #'org-note-graph-consult-read)
-  (setq org-node-map my/org-note-graph-map)
-  (keymap-global-set "C-c n" org-node-map))
-#+end_src
-
-*** Completion display
-
-#+begin_src emacs-lisp
-(with-eval-after-load 'org-roam
-  (require 'my-org-roam)
-  (setq org-roam-node-display-template (concat "${doom-hierarchy:*} " (propertize "${tags:15}" 'face 'org-tag))))
-#+end_src
-
-*** Backlink LaTeX previews
-
-#+begin_src emacs-lisp
-(with-eval-after-load 'org-roam
-  (add-hook 'org-roam-buffer-postrender-functions #'my/org-roam-preview-latex))
-#+end_src
-
-*** Consult integration
-
-#+begin_src emacs-lisp
-(use-package consult-org-roam
-  :after org-roam
-  :demand t
-  :init
-  ;; Upstream preview cleanup reads this before collecting Roam buffers.
-  (defvar org-roam-buffer-open-buffer-list nil)
-  :custom
-  (consult-org-roam-grep-func #'consult-ripgrep)
-  (consult-org-roam-buffer-narrow-key ?r)
-  (consult-org-roam-buffer-after-buffers t)
-  :config
-  (consult-org-roam-mode 1)
-  (consult-customize
-   consult-org-roam-forward-links
-   :preview-key "M-."))
+  (keymap-global-set "C-c n" my/org-note-graph-map))
 #+end_src
 
 *** File preview appearance

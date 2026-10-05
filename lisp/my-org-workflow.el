@@ -25,7 +25,9 @@
 (defcustom my/task-extra-files nil
   "Additional Org files to include in task views."
   :type '(repeat file))
-(defvar org-roam-directory)
+(defcustom my/notes-directory org-directory
+  "Directory containing personal notes and the task inbox."
+  :type 'directory)
 (defvar my/task-project-agenda-blocks nil
   "Org block-agenda specification for the project view, set in config.org.")
 (defvar my/project-note-hook nil
@@ -40,33 +42,31 @@
   "Whether FILE exists or has an unsaved visiting buffer."
   (or (file-regular-p file) (buffer-live-p (get-file-buffer file))))
 
-(defun my/task--roam-file-p (&optional file)
-  "Whether FILE belongs to the configured Roam tree."
+(defun my/task--note-file-p (&optional file)
+  "Whether FILE belongs to the configured personal notes tree."
   (let ((file (or file buffer-file-name)))
-    (and file (boundp 'org-roam-directory)
-         (file-in-directory-p file org-roam-directory))))
+    (and file (file-in-directory-p file my/notes-directory))))
 
-(defun my/task--roam-files ()
-  "List Roam Org files, including new files in unsaved buffers."
-  (when (boundp 'org-roam-directory)
-    (delete-dups
-     (append
-      (when (file-directory-p org-roam-directory)
-        (seq-filter (lambda (file)
-                      (and (file-regular-p file)
-                           (not (string-prefix-p ".#" (file-name-nondirectory file)))))
-                    (directory-files-recursively org-roam-directory "\\.org\\'")))
-      (delq nil
-            (mapcar (lambda (buffer)
-                      (let ((file (buffer-file-name buffer)))
-                        (when (and file (string-suffix-p ".org" file)
-                                   (my/task--roam-file-p file)) file)))
-                    (buffer-list)))))))
+(defun my/task--note-files ()
+  "List personal Org files, including new files in unsaved buffers."
+  (delete-dups
+   (append
+    (when (file-directory-p my/notes-directory)
+      (seq-filter (lambda (file)
+                    (and (file-regular-p file)
+                         (not (string-prefix-p ".#" (file-name-nondirectory file)))))
+                  (directory-files-recursively my/notes-directory "\\.org\\'")))
+    (delq nil
+          (mapcar (lambda (buffer)
+                    (let ((file (buffer-file-name buffer)))
+                      (when (and file (string-suffix-p ".org" file)
+                                 (my/task--note-file-p file)) file)))
+                  (buffer-list))))))
 
 (defun my/task-project-root (&optional prompt)
   "Resolve current project context, optionally PROMPT for another project.
 Personal notes do not inherit the notes repository as their project."
-  (let ((root (when (or project-current-directory-override (not (my/task--roam-file-p)))
+  (let ((root (when (or project-current-directory-override (not (my/task--note-file-p)))
                 (when-let* ((project (project-current nil))) (project-root project)))))
     (when (and (not root) prompt)
       (setq root (funcall project-prompter)))
@@ -117,10 +117,9 @@ When NODE is non-nil, assign a file ID for stable links."
   (my/task--tasks-heading))
 
 (defun my/task-inbox-target ()
-  "Position capture in the Roam inbox."
-  (unless (boundp 'org-roam-directory) (user-error "Roam directory is not configured"))
+  "Position capture in the notes inbox."
   (set-buffer (my/task--prepare-file
-               (expand-file-name "inbox.org" org-roam-directory) "Inbox" t))
+               (expand-file-name "inbox.org" my/notes-directory) "Inbox" t))
   (my/task--tasks-heading))
 
 (defun my/task-project-context-p ()
@@ -137,41 +136,34 @@ When NODE is non-nil, assign a file ID for stable links."
     (unless root (user-error "No project in the capture context"))
     (my/task--project-target root)))
 
-(defun my/task--node-target (node)
-  "Position capture beneath the existing Roam NODE."
-  (set-buffer (find-file-noselect (org-roam-node-file node)))
-  (widen)
-  (if (zerop (org-roam-node-level node)) (my/task--tasks-heading)
-    (goto-char (or (org-find-property "ID" (org-roam-node-id node))
-                   (user-error "Roam heading no longer exists; refresh the Roam database")))
-    (org-back-to-heading t)))
+(declare-function org-note-graph-refresh "org-note-graph-store" (&optional force))
+(declare-function org-note-graph-current-node "org-note-graph-ui" (&optional db))
+(declare-function org-note-graph--goto "org-note-graph-ui" (node))
+(declare-function my/org-note-graph-read "my-org-note-graph" (db keys &optional prompt allow-new))
+(declare-function my/org-note-graph-selection "my-org-note-graph" (db scoped))
 
-(defun my/task-roam-target ()
-  "Capture in the current Roam node, or select an existing node elsewhere."
-  (let ((origin (org-capture-get :original-buffer)))
-    (if (and (buffer-live-p origin)
-             (with-current-buffer origin (my/task--roam-file-p)))
-        (progn
-          (set-buffer origin)
-          (widen)
-          ;; Read the live outline, including new nodes not indexed yet.
-          (unless (org-before-first-heading-p)
-            (org-back-to-heading t)
-            (while (and (not (org-entry-get nil "ID")) (org-up-heading-safe))))
-          (unless (and (org-at-heading-p) (org-entry-get nil "ID"))
-            (my/task--tasks-heading)))
-      (require 'org-roam)
-      (my/task--node-target (org-roam-node-read nil nil nil t "Task in node: ")))))
+(defun my/task-note-target ()
+  "Capture in the current graph node, or select an existing node elsewhere."
+  (require 'my-org-note-graph)
+  (let* ((db (org-note-graph-refresh))
+         (origin (org-capture-get :original-buffer))
+         (node (with-current-buffer (if (buffer-live-p origin) origin (current-buffer))
+                 (or (org-note-graph-current-node db)
+                     (my/org-note-graph-read db (my/org-note-graph-selection db nil)
+                                             "Task in note: ")))))
+    (org-note-graph--goto node)
+    (if (org-before-first-heading-p) (my/task--tasks-heading)
+      (org-back-to-heading t))))
 
 (defun my/task-context-target ()
-  "Capture in the project, current Roam node, or inbox, in that order."
+  "Capture in the project, current note, or inbox, in that order."
   (let* ((origin (org-capture-get :original-buffer))
          (root (when (buffer-live-p origin)
                  (with-current-buffer origin (my/task-project-root)))))
     (cond (root (my/task--project-target root))
           ((and (buffer-live-p origin)
-                (with-current-buffer origin (my/task--roam-file-p)))
-           (my/task-roam-target))
+                (with-current-buffer origin (my/task--note-file-p)))
+           (my/task-note-target))
           (t (my/task-inbox-target)))))
 
 (defun my/task-capture ()
@@ -179,8 +171,8 @@ When NODE is non-nil, assign a file ID for stable links."
   (interactive)
   (org-capture nil "t"))
 
-(defun my/roam-task-capture ()
-  "Capture a task in a Roam node even when it is associated with a project."
+(defun my/note-task-capture ()
+  "Capture a task in a note even when it is associated with a project."
   (interactive)
   (org-capture nil "r"))
 
@@ -223,7 +215,7 @@ When NODE is non-nil, assign a file ID for stable links."
 
 (defun my/task-agenda-files ()
   "Discover personal notes and known projects' Org notes for the agenda."
-  (let* ((notes (my/task--roam-files))
+  (let* ((notes (my/task--note-files))
          (roots (project-known-project-roots))
          (files (append notes my/task-legacy-files my/task-extra-files
                         (cl-loop for root in roots
@@ -253,10 +245,10 @@ When NODE is non-nil, assign a file ID for stable links."
     (apply prepare args)))
 
 (defun my/task--inbox-p ()
-  "Whether the current entry is in the general Roam inbox."
-  (and buffer-file-name (boundp 'org-roam-directory)
+  "Whether the current entry is in the general notes inbox."
+  (and buffer-file-name
        (equal (file-truename buffer-file-name)
-              (file-truename (expand-file-name "inbox.org" org-roam-directory)))))
+              (file-truename (expand-file-name "inbox.org" my/notes-directory)))))
 
 (defun my/task-skip-outside-inbox ()
   "Skip non-inbox files in the review's inbox block."
