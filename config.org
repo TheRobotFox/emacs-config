@@ -1182,11 +1182,13 @@ Project notes live in the repository's =README.org=; tasks are ordinary headings
 (add-hook 'org-mode-hook #'my/org-collections-setup)
 #+end_src
 
-*** Directed graph prototype
+*** Org Note Graph
 
 #+begin_src emacs-lisp
 (use-package org-note-graph
-  :straight nil
+  :straight (:host github :repo "TheRobotFox/org-note-graph"
+             :local-repo "~/projects/org-note-graph"
+             :files (:defaults "extensions/*.el"))
   :after org-roam
   :demand t
   :custom
