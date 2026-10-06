@@ -916,6 +916,9 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
 (org-add-agenda-custom-command
  '("p" "Project: week, next actions, and backlog" my/project-task-agenda ""))
 
+(org-add-agenda-custom-command
+ '("s" "Reading queue" tags-todo "reading"))
+
 (add-hook 'org-agenda-mode-hook #'my/task-agenda-appearance)
 (setopt org-agenda-block-separator "────────────────────────"
         org-agenda-prefix-format
@@ -955,6 +958,7 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
 
 #+begin_src emacs-lisp
 (require 'my-org-capture)
+(require 'org-protocol)
 (setq org-capture-templates my/org-capture-templates)
 (setq org-capture-templates-contexts
       '(("p" (my/task-project-context-p))))
@@ -1171,14 +1175,11 @@ Project notes live in the repository's =README.org=; tasks are ordinary headings
   :demand t
   :custom
   (org-note-graph-roots (list my/notes-directory))
-  (org-note-graph-directory my/notes-directory)
   (org-note-graph-display-function #'my/popup-select)
   (org-note-graph-open-function #'my/popup-open-source)
   :config
   (require 'my-org-note-graph)
-  (setq my/org-note-graph-collections-node "id:2584eff8-ab41-4dc6-a24b-edd30711a943"
-        my/org-note-graph-alias-collection "id:fba21393-c5e8-4984-a681-ab44ab56d3bf"
-        my/org-note-graph-project-collection "id:b117e06d-421d-43d0-9ab6-f70ba8a076b4")
+  (setq my/org-note-graph-projects-node "id:b117e06d-421d-43d0-9ab6-f70ba8a076b4")
   (add-hook 'my/project-note-hook #'my/org-note-graph-collect-project)
   (require 'org-note-graph-consult)
   (setq org-note-graph-read-function #'org-note-graph-consult-read)
@@ -1280,8 +1281,17 @@ Inbox and Sent are fetched with mbsync; credentials live in =~/.config/isync/=.
 (use-package pdf-tools
   :mode ("\\.pdf\\'" . pdf-view-mode)
   :config
+  (pdf-tools-install-noverify)
   (keymap-set pdf-view-mode-map "C-s" #'isearch-forward)
   (keymap-set pdf-view-mode-map "C-r" #'isearch-backward))
+
+(use-package org-noter
+  :commands org-noter
+  :bind ("C-c n N" . org-noter)
+  :custom
+  (org-noter-supported-modes '(pdf-view-mode doc-view-mode))
+  (org-noter-always-create-frame nil)
+  (org-noter-auto-save-last-location t))
 #+end_src
 
 ** Matrix

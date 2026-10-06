@@ -137,10 +137,10 @@ When NODE is non-nil, assign a file ID for stable links."
     (my/task--project-target root)))
 
 (declare-function org-note-graph-refresh "org-note-graph-store" (&optional force))
-(declare-function org-note-graph-current-node "org-note-graph-ui" (&optional db))
-(declare-function org-note-graph--goto "org-note-graph-ui" (node))
+(declare-function org-note-graph-current-node "org-note-graph-view" (&optional db))
+(declare-function org-note-graph-goto "org-note-graph-model" (node))
 (declare-function my/org-note-graph-read "my-org-note-graph" (db keys &optional prompt allow-new))
-(declare-function my/org-note-graph-selection "my-org-note-graph" (db scoped))
+(declare-function my/org-note-graph-selection "my-org-note-graph" (db))
 
 (defun my/task-note-target ()
   "Capture in the current graph node, or select an existing node elsewhere."
@@ -149,9 +149,9 @@ When NODE is non-nil, assign a file ID for stable links."
          (origin (org-capture-get :original-buffer))
          (node (with-current-buffer (if (buffer-live-p origin) origin (current-buffer))
                  (or (org-note-graph-current-node db)
-                     (my/org-note-graph-read db (my/org-note-graph-selection db nil)
+                     (my/org-note-graph-read db (my/org-note-graph-selection db)
                                              "Task in note: ")))))
-    (org-note-graph--goto node)
+    (org-note-graph-goto node)
     (if (org-before-first-heading-p) (my/task--tasks-heading)
       (org-back-to-heading t))))
 

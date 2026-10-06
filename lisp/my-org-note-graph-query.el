@@ -1,11 +1,12 @@
-;;; my-org-note-graph-query.el --- Symbolic node-set queries -*- lexical-binding: t; -*-
+;;; my-org-note-graph-query.el --- Symbolic location and graph queries -*- lexical-binding: t; -*-
 
 ;;; Code:
 (require 'org-note-graph-labels)
+(require 'org-note-graph-text)
 
-(defcustom my/org-note-graph-alias-collection nil
-  "Node key of the label collection supplying alternate names for search."
-  :type '(choice (const nil) string) :group 'org-note-graph)
+(defcustom my/org-note-graph-alias-sources '("Aliases")
+  "Destinations and existing label nodes supplying alternate names."
+  :type '(repeat string) :group 'org-note-graph)
 
 (defun my/org-note-graph-query--tokens (text)
   "Tokenize TEXT without evaluating Lisp."
@@ -112,26 +113,62 @@
   "Match literal NAME, anchored when EXACT is non-nil."
   (if exact (concat "\\`" (regexp-quote name) "\\'") (regexp-quote name)))
 
+(defun my/org-note-graph-query--same-location-p (left right)
+  "Compare positions, preserving distinct whole-node IDs at a shared position."
+  (and (equal (org-note-graph-location-file left) (org-note-graph-location-file right))
+       (= (org-note-graph-location-position left) (org-note-graph-location-position right))
+       (equal (unless (org-note-graph-location-search left) (org-note-graph-location-id left))
+              (unless (org-note-graph-location-search right) (org-note-graph-location-id right)))))
+
+(defun my/org-note-graph-query-lookup (db regexp scopes)
+  "Find precise locations named by labels or scanner contributions in SCOPES."
+  (seq-uniq
+   (append (mapcar (lambda (key) (org-note-graph-node db key))
+                   (org-note-graph-labels-query db regexp scopes))
+           (org-note-graph-locations-lookup db regexp scopes))
+   #'my/org-note-graph-query--same-location-p))
+
 (defun my/org-note-graph-query--names (db name exact)
   "Find NAME in titles and aliases in DB; EXACT requires a complete name."
   (let ((case-fold-search t)
         (pattern (my/org-note-graph-query--pattern name exact)))
     (seq-union
      (org-note-graph-select db (lambda (node) (string-match-p pattern (org-note-graph-node-title node))))
-     (org-note-graph-labels-query db pattern (when my/org-note-graph-alias-collection
-                                             (list my/org-note-graph-alias-collection))) #'equal)))
+     (org-note-graph-location-nodes
+      db (my/org-note-graph-query-lookup db pattern my/org-note-graph-alias-sources)) #'equal)))
+
+(defun my/org-note-graph-query--scopes (expression db context resolve)
+  "Resolve a destination or node-set EXPRESSION for scoped lookup."
+  (pcase expression
+    (`(name ,name ,exact)
+     (let ((case-fold-search t) (pattern (my/org-note-graph-query--pattern name exact)))
+       (seq-union (my/org-note-graph-query--names db name exact)
+                  (seq-filter (lambda (destination) (string-match-p pattern destination))
+                              (org-note-graph-data-destinations 'named-location)) #'equal)))
+    (`(all) (append (mapcar #'org-note-graph-node-key (org-note-graph-nodes db))
+                    (org-note-graph-data-destinations 'named-location)))
+    (`(not ,term)
+     (seq-difference (my/org-note-graph-query--scopes '(all) db context resolve)
+                     (my/org-note-graph-query--scopes term db context resolve) #'equal))
+    (`(,(and operator (or "&" "|" "\\")) ,left ,right)
+     (funcall (pcase operator ("&" #'seq-intersection) ("|" #'seq-union) ("\\" #'seq-difference))
+              (my/org-note-graph-query--scopes left db context resolve)
+              (my/org-note-graph-query--scopes right db context resolve) #'equal))
+    (_ (org-note-graph-location-nodes db (my/org-note-graph-query--eval expression db context resolve)))))
 
 (defun my/org-note-graph-query--walk (terms arrows db context resolve reverse names)
   "Follow TERMS and ARROWS toward a hole, reversing edges when REVERSE is set."
   (if (null terms) (mapcar #'org-note-graph-node-key (org-note-graph-nodes db))
-    (let ((keys (my/org-note-graph-query--eval (pop terms) db context resolve names)))
+    (let ((keys (org-note-graph-location-nodes
+                 db (my/org-note-graph-query--eval (pop terms) db context resolve names))))
       (dolist (arrow arrows keys)
         (let ((step (if (xor reverse (and (stringp arrow) (string-prefix-p "<" arrow)))
                         #'org-note-graph-in #'org-note-graph-out)))
           (setq keys
                 (if (consp arrow)
                     (let ((expandable
-                           (seq-union keys (my/org-note-graph-query--eval (cadr arrow) db context resolve names)
+                           (seq-union keys (org-note-graph-location-nodes
+                                            db (my/org-note-graph-query--eval (cadr arrow) db context resolve names))
                                       #'equal)))
                       (org-note-graph-closure
                        db keys (lambda (db frontier)
@@ -140,45 +177,53 @@
                     (funcall step db keys)))))
         (when terms
           (setq keys (seq-intersection keys
-                                      (my/org-note-graph-query--eval (pop terms) db context resolve names)
+                                      (org-note-graph-location-nodes
+                                       db (my/org-note-graph-query--eval (pop terms) db context resolve names))
                                       #'equal)))))))
 
 (defun my/org-note-graph-query--eval (expression db context resolve &optional names)
   "Evaluate EXPRESSION in DB, using CONTEXT and named-set RESOLVE.
-NAMES optionally replaces title/alias lookup with another name query."
+Return locations.  NAMES optionally supplies scoped location lookup."
   (pcase expression
-    (`(name ,name ,exact) (funcall (or names #'my/org-note-graph-query--names) db name exact))
+    (`(name ,name ,exact)
+     (if names (funcall names db name exact)
+       (mapcar (lambda (key) (org-note-graph-node db key)) (my/org-note-graph-query--names db name exact))))
     (`(scope ,term ,tables)
-     (let ((sources (my/org-note-graph-query--eval tables db context resolve)))
+     (let ((sources (my/org-note-graph-query--scopes tables db context resolve)))
        (my/org-note-graph-query--eval
         term db context resolve
         (lambda (db name exact)
           (let ((case-fold-search t))
-            (org-note-graph-labels-query db (my/org-note-graph-query--pattern name exact) sources))))))
-    (`(key ,key) (when-let* ((key (org-note-graph-resolve db key))) (list key)))
+            (my/org-note-graph-query-lookup db (my/org-note-graph-query--pattern name exact) sources))))))
+    (`(key ,key) (when-let* ((key (org-note-graph-resolve db key))) (list (org-note-graph-node db key))))
     (`(variable ,name) (funcall resolve name))
     (`(here) (unless (and context (org-note-graph-node db context))
                (user-error "This query needs a current node for ."))
-     (list context))
-    ((or `(all) `(hole ,_)) (mapcar #'org-note-graph-node-key (org-note-graph-nodes db)))
+     (list (org-note-graph-node db context)))
+    ((or `(all) `(hole ,_)) (if names (funcall names db "" nil) (org-note-graph-nodes db)))
     (`(not ,term)
      (seq-difference (my/org-note-graph-query--eval '(all) db context resolve names)
-                     (my/org-note-graph-query--eval term db context resolve names) #'equal))
+                     (my/org-note-graph-query--eval term db context resolve names) #'my/org-note-graph-query--same-location-p))
     (`(path ,terms ,arrows)
      (let ((hole (cl-position-if (lambda (term) (eq (car term) 'hole)) terms)))
-       (seq-intersection
-        (my/org-note-graph-query--walk (seq-take terms hole) (seq-take arrows hole) db context resolve nil names)
-        (my/org-note-graph-query--walk (reverse (seq-drop terms (1+ hole)))
-                                       (reverse (seq-drop arrows hole)) db context resolve t names) #'equal)))
+       (mapcar
+        (lambda (key) (org-note-graph-node db key))
+        (seq-intersection
+         (my/org-note-graph-query--walk (seq-take terms hole) (seq-take arrows hole) db context resolve nil names)
+         (my/org-note-graph-query--walk (reverse (seq-drop terms (1+ hole)))
+                                      (reverse (seq-drop arrows hole)) db context resolve t names) #'equal))))
+    ((or `("&" (hole ,_) ,term) `("&" ,term (hole ,_)))
+     (my/org-note-graph-query--eval term db context resolve names))
     (`(,operator ,left ,right)
      (funcall (pcase operator ("&" #'seq-intersection) ("|" #'seq-union) ("\\" #'seq-difference))
               (my/org-note-graph-query--eval left db context resolve names)
-              (my/org-note-graph-query--eval right db context resolve names) #'equal))))
+              (my/org-note-graph-query--eval right db context resolve names) #'my/org-note-graph-query--same-location-p))))
 
 (defun my/org-note-graph-query-compile (text)
   "Translate TEXT to a query function accepting a database and context key.
 Named holes define intersected sets; $name references their completed value.
-The final clause returns a set.  Named dependencies must be acyclic."
+The final clause returns locations; arrows traverse their owning nodes.
+Named dependencies must be acyclic."
   (let* ((clauses (my/org-note-graph-query--parse text))
          (result (car (last clauses))) definitions)
     (dolist (clause (butlast clauses))
@@ -201,7 +246,7 @@ The final clause returns a set.  Named dependencies must be acyclic."
                                  (lambda (body)
                                    (my/org-note-graph-query--eval
                                     body db context (lambda (other) (value other (cons name trail))))) bodies)))
-                     (puthash name (seq-reduce (lambda (a b) (seq-intersection a b #'equal))
+                     (puthash name (seq-reduce (lambda (a b) (seq-intersection a b #'my/org-note-graph-query--same-location-p))
                                               (cdr sets) (car sets)) cache))))))
           (dolist (definition definitions) (value (car definition)))
           (my/org-note-graph-query--eval result db context #'value))))))
