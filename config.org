@@ -1063,12 +1063,18 @@ Project notes live in the repository's =README.org=; tasks are ordinary headings
 
 ** Links and images
 
+Inline images follow text zoom; width attributes specify their base size.
+Keep images in a separate paragraph for centering.
+
 #+begin_src emacs-lisp
+;; Scanner locations use text searches within their owning note.
+(setopt org-link-search-must-match-exact-headline nil)
 (setopt org-display-remote-inline-images 'cache
-        org-image-actual-width 500
+        org-image-actual-width '(600)
         org-image-align 'center
         org-startup-with-link-previews t
         org-safe-remote-resources '("\\`https://fniessen\\.github\\.io\\(?:/\\|\\'\\)" ))
+(advice-add 'org--create-inline-image :filter-return #'my/org-inline-image)
 #+end_src
 
 ** LaTeX
@@ -1147,13 +1153,18 @@ Project notes live in the repository's =README.org=; tasks are ordinary headings
 (use-package d2-mode
   ;; Load first: ob-d2 must replace the backend bundled with d2-mode.
   :demand t
-  :mode "\\.d2\\'")
+  :mode "\\.d2\\'"
+  :init
+  (setenv "D2_PAD" "10")
+  (setenv "D2_LAYOUT" "elk")
+  (setenv "D2_THEME" "1"))
 
 (use-package ob-d2
   :after (org d2-mode)
   :demand t
   :config
   (add-to-list 'org-babel-default-header-args:d2 '(:eval . "never-export")))
+
 
 (setq org-confirm-babel-evaluate nil)
 (setq org-plantuml-jar-path "/usr/share/java/plantuml/plantuml.jar")
@@ -1164,26 +1175,27 @@ Project notes live in the repository's =README.org=; tasks are ordinary headings
 (add-hook 'org-babel-after-execute-hook #'org-redisplay-inline-images)
 #+end_src
 
-** Note graph
+** Note database
 
 #+begin_src emacs-lisp
-(use-package org-note-graph
+(use-package org-note-db
   :straight (:host github :repo "TheRobotFox/org-note-graph"
              :local-repo "~/projects/org-note-graph"
              :files (:defaults "extensions/*.el"))
   :after org
   :demand t
   :custom
-  (org-note-graph-roots (list my/notes-directory))
-  (org-note-graph-display-function #'my/popup-select)
-  (org-note-graph-open-function #'my/popup-open-source)
+  (org-note-db-roots (list my/notes-directory))
+  (org-note-db-capture-directory my/notes-directory)
+  (org-note-db-alias-sources '("Aliases"))
+  (org-note-db-display-function #'my/popup-select)
+  (org-note-db-open-function #'my/popup-open-source)
   :config
-  (require 'my-org-note-graph)
-  (setq my/org-note-graph-projects-node "id:b117e06d-421d-43d0-9ab6-f70ba8a076b4")
-  (add-hook 'my/project-note-hook #'my/org-note-graph-collect-project)
-  (require 'org-note-graph-consult)
-  (setq org-note-graph-read-function #'org-note-graph-consult-read)
-  (keymap-global-set "C-c n" my/org-note-graph-map))
+  (require 'my-org-note-db)
+  (setq my/org-note-db-projects-node "id:b117e06d-421d-43d0-9ab6-f70ba8a076b4")
+  (add-hook 'my/project-note-hook #'my/org-note-db-collect-project)
+  (setq org-note-db-read-function #'my/org-note-db-read)
+  (keymap-global-set "C-c n" my/org-note-db-map))
 #+end_src
 
 *** File preview appearance

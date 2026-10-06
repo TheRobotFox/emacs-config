@@ -8,6 +8,8 @@
   "Minimum text scale for reading buffers.")
 (defvar-local my/reading-max-scale 4.0
   "Maximum text scale for a single reading window.")
+(defvar-local my/reading-auto-scale nil
+  "Last fitted scale, excluding manual zoom.")
 
 (defun my/reading-scale-for-window (window)
   "Choose a capped reading scale for WINDOW, allowing for its full width."
@@ -22,14 +24,18 @@
     my/reading-scale))
 
 (defun my/update-reading-scale (&optional _window)
-  "Fit reading text to the layout without oscillating between visible windows."
+  "Fit reading text to the layout, preserving manual zoom relative to that fit."
   (when olivetti-mode
     (let* ((windows (get-buffer-window-list (current-buffer) nil t))
            (scale (if windows
                       (apply #'min (mapcar #'my/reading-scale-for-window windows))
                     my/reading-scale)))
-      (unless (= text-scale-mode-amount scale)
-        (text-scale-set scale)))))
+      (unless (equal my/reading-auto-scale scale)
+        (let ((zoom (if my/reading-auto-scale
+                        (- text-scale-mode-amount my/reading-auto-scale)
+                      0)))
+          (setq my/reading-auto-scale scale)
+          (text-scale-set (+ scale zoom)))))))
 
 (defvar-local my/reading-previous-text-scale nil
   "Text scale before enabling Olivetti, or nil when not saved.")
@@ -57,7 +63,8 @@
           (setq-local line-spacing (cdr my/reading-previous-line-spacing))
         (kill-local-variable 'line-spacing))
       (setq my/reading-previous-text-scale nil
-            my/reading-previous-line-spacing nil))))
+            my/reading-previous-line-spacing nil
+            my/reading-auto-scale nil))))
 
 (provide 'my-reading)
 ;;; my-reading.el ends here

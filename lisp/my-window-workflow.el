@@ -16,13 +16,13 @@
 (declare-function haskell-session-process "haskell-session")
 (declare-function haskell-session-get "haskell-session")
 (declare-function haskell-process-process "haskell-process")
-(declare-function org-note-graph-node-key "org-note-graph-nodes" (node))
-(declare-function org-note-graph-current-node "org-note-graph-view" (&optional db))
-(declare-function org-note-graph-refresh "org-note-graph-store" (&optional force))
-(declare-function my/org-note-graph-backlinks "my-org-note-graph" ())
-(declare-function my/org-note-graph-backlink-query "my-org-note-graph" (db context))
-(defvar org-note-graph--view-context)
-(defvar org-note-graph--view-query)
+(declare-function org-note-db-node-key "org-note-db-graph" (node))
+(declare-function org-note-db-current-node "org-note-db-view" (&optional db))
+(declare-function org-note-db-refresh "org-note-db-store" (&optional force))
+(declare-function org-note-db-backlinks "org-note-db-writing" ())
+(declare-function org-note-db-backlink-query "org-note-db-writing" (db context))
+(defvar org-note-db--view-context)
+(defvar org-note-db--view-query)
 
 (defgroup my/window-workflow nil "Supporting windows." :group 'windows)
 (defcustom my/popup-right-min-width 140
@@ -43,8 +43,8 @@
   "Whether BUFFER contains documentation rather than interactive output."
   (with-current-buffer buffer
     (or (derived-mode-p 'help-mode 'dictionary-mode
-                        'org-note-graph-view-mode)
-        (equal (buffer-name) "*Note Graph: Unresolved*")
+                        'org-note-db-view-mode)
+        (equal (buffer-name) "*Note DB: Unresolved*")
         ;; Dictionary displays its buffer before initializing the major mode.
         (string-match-p "\\`\\*Dictionary\\*\\(?:<[0-9]+>\\)?\\'" (buffer-name))
         (string-match-p "\\` *\\*eldoc\\*" (buffer-name)))))
@@ -261,22 +261,22 @@ Start language runtimes with their normal package commands first."
 (defun my/popup-notes ()
   "Toggle the graph backlink query for the editing window."
   (interactive)
-  (require 'my-org-note-graph)
+  (require 'my-org-note-db)
   (let* ((source (my/popup-source-window))
          (key (with-current-buffer (window-buffer source)
-                (org-note-graph-node-key
-                 (or (org-note-graph-current-node (org-note-graph-refresh))
+                (org-note-db-node-key
+                 (or (org-note-db-current-node (org-note-db-refresh))
                      (user-error "No graph node in the editing window")))))
          (window (cl-find-if
                   (lambda (window)
                     (with-current-buffer (window-buffer window)
-                      (and (derived-mode-p 'org-note-graph-view-mode)
-                           (equal org-note-graph--view-context key)
-                           (eq org-note-graph--view-query #'my/org-note-graph-backlink-query))))
+                      (and (derived-mode-p 'org-note-db-view-mode)
+                           (equal org-note-db--view-context key)
+                           (eq org-note-db--view-query #'org-note-db-backlink-query))))
                   (window-list nil 'no-mini))))
     (if window (quit-window nil window)
       (select-window source)
-      (my/org-note-graph-backlinks))))
+      (org-note-db-backlinks))))
 
 (defun my/popup-eldoc ()
   "Toggle the full Eldoc pane for the source window, without selecting it.

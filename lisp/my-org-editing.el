@@ -5,6 +5,7 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'org)
 (require 'org-element)
 (require 'org-list)
@@ -22,7 +23,53 @@
 
 (defun my/org-typography ()
   "Apply note typography without changing fonts in other buffers."
-  (setq-local line-spacing 0.12))
+  (setq-local line-spacing 0.12)
+  (add-hook 'text-scale-mode-hook #'my/org-scale-inline-images nil t))
+
+(defun my/org-scale-image (image)
+  "Return IMAGE with the buffer's text zoom, without changing its base dimensions."
+  (if (eq (car-safe image) 'image)
+      (cons 'image
+            (plist-put (copy-sequence (cdr image)) :scale
+                       (expt text-scale-mode-step
+                             (if text-scale-mode text-scale-mode-amount 0))))
+    image))
+
+(defun my/org-scale-inline-images ()
+  "Update displayed images and their alignment to match text zoom."
+  (dolist (overlay org-link-preview-overlays)
+    (let ((image (overlay-get overlay 'display)))
+      (when (eq (car-safe image) 'image)
+        (let* ((scaled (my/org-scale-image image))
+               (before (overlay-get overlay 'before-string))
+               (alignment (and (stringp before) (> (length before) 0)
+                               (get-text-property 0 'display before))))
+          (overlay-put overlay 'display scaled)
+          (when (eq (car-safe alignment) 'space)
+            (let ((spacer (copy-sequence before)))
+              (put-text-property
+               0 1 'display
+               (cl-subst-if scaled
+                            (lambda (form) (eq (car-safe form) 'image))
+                            alignment)
+               spacer)
+              (overlay-put overlay 'before-string spacer))))))))
+
+(defun my/org-inline-image (image)
+  "Apply text zoom to IMAGE and keep D2 math independent of the buffer font."
+  (let* ((image (my/org-scale-image image))
+         (properties (cdr image))
+         (file (plist-get properties :file)))
+    (if (and (eq (plist-get properties :type) 'svg)
+             file (not (file-remote-p file))
+             (with-temp-buffer
+               (insert-file-contents file nil 0 512)
+               (search-forward "data-d2-version=" nil t)))
+        (cons 'image
+              (plist-put (copy-sequence properties) :css
+                         (concat (plist-get properties :css)
+                                 "\nsvg { font-size: 16px; }")))
+      image)))
 
 (defun my/org--block-fold-state (element)
   "Return `hide', `off', or nil for ELEMENT's initial folding."

@@ -8,13 +8,18 @@
 	c-electric-lt-gt
 	c-electric-paren
 	c-electric-semi&comma
+	embark-act
 	embrace-change
 	end-of-visual-line
 	indent-for-tab-command
 	kill-region
 	kill-visual-line
 	org-beginning-of-line
+	org-ctrl-c-ctrl-c
+	org-cycle
 	org-delete-char
+	org-end-of-line
+	org-force-self-insert
 	org-self-insert-command
 	sp-mark-sexp
 	sp-remove-active-pair-overlay
@@ -24,4 +29,5 @@
       '(
 	pixel-scroll-precision
 	pixel-scroll-start-momentum
+	toggle-input-method
 	))
