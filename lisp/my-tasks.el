@@ -1,8 +1,10 @@
-;;; my-org-workflow.el --- Project notes and task capture -*- lexical-binding: t; -*-
+;;; my-tasks.el --- Project notes, task capture and agenda discovery -*- lexical-binding: t; -*-
 
 ;;; Commentary:
-;; Project notes live in the repository; tasks are ordinary README headings.
-;; project.el supplies repository context and remembers agenda sources.
+;; Project notes live in the repository; tasks are ordinary Org headings there,
+;; in personal notes, or in the notes inbox.  project.el supplies repository
+;; context and remembers agenda sources.  The agenda commands and capture
+;; templates that use these targets are configured in config.org.
 
 ;;; Code:
 (require 'cl-lib)
@@ -14,12 +16,11 @@
 (require 'seq)
 (require 'subr-x)
 
-(defgroup my/org-workflow nil "Personal project and task workflow." :group 'org)
+(defgroup my/tasks nil "Personal project and task workflow." :group 'org)
 (defcustom my/project-note-file "README.org"
   "Org note relative to each project root, also containing its Tasks heading."
   :type 'string)
-(defcustom my/task-legacy-files
-  '("~/org/todos.org" "~/org/questions.org" "~/org/ideas.org" "~/org/notes.org")
+(defcustom my/task-legacy-files nil
   "Existing files included in the overview without moving their contents."
   :type '(repeat file))
 (defcustom my/task-extra-files nil
@@ -28,10 +29,27 @@
 (defcustom my/notes-directory org-directory
   "Directory containing personal notes and the task inbox."
   :type 'directory)
-(defvar my/task-project-agenda-blocks nil
-  "Org block-agenda specification for the project view, set in config.org.")
+(defcustom my/task-files-function nil
+  "Function returning the note files that contain tasks.
+Nil scans the notes tree for every Org file."
+  :type '(choice (const nil) function))
+(defcustom my/task-note-locator nil
+  "Function selecting a note for task capture outside the notes tree.
+Called with no arguments in the capture context; it must set the current
+buffer and move point into the chosen note.  Nil restricts note capture to
+the originating note."
+  :type '(choice (const nil) function))
+(defcustom my/project-task-agenda-blocks
+  '((agenda "" ((org-agenda-span 7)))
+    (todo "NEXT" ((org-agenda-overriding-header "Next actions")))
+    (todo "TODO" ((org-agenda-overriding-header "Backlog")))
+    (todo "WAIT" ((org-agenda-overriding-header "Waiting")))
+    (todo "HOLD|IDEA|DISSOLVE" ((org-agenda-overriding-header "Deferred"))))
+  "Org block-agenda specification rendered by `my/project-task-agenda'."
+  :type 'sexp)
 (defvar my/project-note-hook nil
   "Hook run in the repository note opened by the project commands.")
+
 
 (defun my/task--canonical-root (directory)
   "Normalize DIRECTORY, preserving a trailing slash."
@@ -107,6 +125,11 @@ When NODE is non-nil, assign a file ID for stable links."
   (beginning-of-line)
   (unless (org-at-heading-p) (forward-line -1)))
 
+(defun my/task--entry-heading ()
+  "Position at the current heading, or at the Tasks heading before the first one."
+  (widen)
+  (if (org-before-first-heading-p) (my/task--tasks-heading) (org-back-to-heading t)))
+
 (defun my/task--remember-root (root)
   "Remember ROOT so its tasks remain discoverable after restarting Emacs."
   (project-remember-project (cons 'transient root)))
@@ -115,6 +138,11 @@ When NODE is non-nil, assign a file ID for stable links."
   "Position capture under Tasks in ROOT's repository note."
   (set-buffer (my/project-note-buffer root))
   (my/task--tasks-heading))
+
+(defun my/task--origin ()
+  "Return the live buffer that started the current capture, or nil."
+  (let ((origin (org-capture-get :original-buffer)))
+    (and (buffer-live-p origin) origin)))
 
 (defun my/task-inbox-target ()
   "Position capture in the notes inbox."
@@ -130,57 +158,33 @@ When NODE is non-nil, assign a file ID for stable links."
 
 (defun my/task-project-target ()
   "Position capture under Tasks in the originating project's note."
-  (let* ((origin (org-capture-get :original-buffer))
-         (root (when (buffer-live-p origin)
-                 (with-current-buffer origin (my/task-project-root)))))
+  (let* ((origin (my/task--origin))
+         (root (when origin (with-current-buffer origin (my/task-project-root)))))
     (unless root (user-error "No project in the capture context"))
     (my/task--project-target root)))
 
-(declare-function org-note-db-refresh "org-note-db-store" (&optional force))
-(declare-function org-note-db-current-node "org-note-db-view" (&optional db))
-(declare-function org-note-db-goto "org-note-db-model" (node))
-(declare-function org-note-db-read "org-note-db-writing" (db keys &optional prompt allow-new))
-(declare-function org-note-db-selection "org-note-db-writing" (db))
-
 (defun my/task-note-target ()
-  "Capture in the current graph node, or select an existing node elsewhere."
-  (require 'my-org-note-db)
-  (let* ((db (org-note-db-refresh))
-         (origin (org-capture-get :original-buffer))
-         (node (with-current-buffer (if (buffer-live-p origin) origin (current-buffer))
-                 (or (org-note-db-current-node db)
-                     (org-note-db-read db (org-note-db-selection db)
-                                             "Task in note: ")))))
-    (org-note-db-goto node)
-    (if (org-before-first-heading-p) (my/task--tasks-heading)
-      (org-back-to-heading t))))
+  "Capture under the originating note's heading, or in a located note."
+  (let ((origin (my/task--origin)))
+    (cond ((and origin (with-current-buffer origin (my/task--note-file-p)))
+           (set-buffer origin))
+          (my/task-note-locator (funcall my/task-note-locator))
+          (t (user-error "Not in a personal note")))
+    (my/task--entry-heading)))
 
 (defun my/task-context-target ()
   "Capture in the project, current note, or inbox, in that order."
-  (let* ((origin (org-capture-get :original-buffer))
-         (root (when (buffer-live-p origin)
-                 (with-current-buffer origin (my/task-project-root)))))
+  (let* ((origin (my/task--origin))
+         (root (when origin (with-current-buffer origin (my/task-project-root)))))
     (cond (root (my/task--project-target root))
-          ((and (buffer-live-p origin)
-                (with-current-buffer origin (my/task--note-file-p)))
+          ((and origin (with-current-buffer origin (my/task--note-file-p)))
            (my/task-note-target))
           (t (my/task-inbox-target)))))
-
-(defun my/task-capture ()
-  "Capture a task with source context, without requiring a deadline."
-  (interactive)
-  (org-capture nil "t"))
-
-(defun my/note-task-capture ()
-  "Capture a task in a note even when it is associated with a project."
-  (interactive)
-  (org-capture nil "r"))
 
 (defun my/project-task-capture ()
   "Capture a task under Tasks in the current or selected project's note."
   (interactive)
   (let* ((root (my/task-project-root t))
-         ;; This explicit command also supports selecting a project from outside one.
          (org-capture-templates-contexts nil)
          (org-capture-templates
           `(("p" "Project task" entry
@@ -215,7 +219,7 @@ When NODE is non-nil, assign a file ID for stable links."
 
 (defun my/task-agenda-files ()
   "Discover personal notes and known projects' Org notes for the agenda."
-  (let* ((notes (my/task--note-files))
+  (let* ((notes (if my/task-files-function (funcall my/task-files-function) (my/task--note-files)))
          (roots (project-known-project-roots))
          (files (append notes my/task-legacy-files my/task-extra-files
                         (cl-loop for root in roots
@@ -228,21 +232,6 @@ When NODE is non-nil, assign a file ID for stable links."
 (defun my/task-refresh-agenda (&rest _)
   "Refresh task discovery before opening the agenda."
   (setq org-agenda-files (my/task-agenda-files)))
-
-(defun my/task--refresh-vc-on-display (window)
-  "Initialize deferred version-control state when displayed in WINDOW."
-  (when (eq (window-buffer window) (current-buffer))
-    (vc-refresh-state)
-    (remove-hook 'window-buffer-change-functions #'my/task--refresh-vc-on-display t)))
-
-(defun my/task-prepare-agenda-buffers (prepare &rest args)
-  "Run PREPARE with ARGS, deferring new buffers' VC checks until display."
-  (let ((find-file-hook
-         (cl-substitute
-          (lambda ()
-            (add-hook 'window-buffer-change-functions #'my/task--refresh-vc-on-display nil t))
-          #'vc-refresh-state find-file-hook)))
-    (apply prepare args)))
 
 (defun my/task--inbox-p ()
   "Whether the current entry is in the general notes inbox."
@@ -271,16 +260,14 @@ When NODE is non-nil, assign a file ID for stable links."
     (save-excursion (outline-next-heading) (point))))
 
 (defun my/project-task-agenda (&optional _match)
-  "Render the configured task blocks for the current or selected project.
+  "Render `my/project-task-agenda-blocks' for the current or selected project.
 Use ordinary Org block-agenda settings so its standard refresh retains ROOT."
   (let* ((root (my/task-project-root t))
          (title (concat "Project: " (file-name-nondirectory (directory-file-name root))))
          (skip (lambda () (my/task--skip-other-project root))))
-    (unless my/task-project-agenda-blocks
-      (user-error "The project agenda blocks are not configured"))
     (org-agenda-run-series
      title
-     (list my/task-project-agenda-blocks
+     (list my/project-task-agenda-blocks
            `((org-agenda-files (my/task-agenda-files))
              (org-agenda-buffer-name "*Project Tasks*")
              (org-agenda-skip-function ',skip))))))
@@ -290,5 +277,5 @@ Use ordinary Org block-agenda settings so its standard refresh retains ROOT."
   (interactive)
   (org-agenda nil "p"))
 
-(provide 'my-org-workflow)
-;;; my-org-workflow.el ends here
+(provide 'my-tasks)
+;;; my-tasks.el ends here

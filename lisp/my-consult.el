@@ -1,12 +1,16 @@
-;;; my-todo-search.el --- Browse comment markers -*- lexical-binding: t; -*-
+;;; my-consult.el --- Additional Consult readers -*- lexical-binding: t; -*-
 
+;;; Commentary:
+;; Consult-based selection with previews for TODO markers and project files.
+
+;;; Code:
 (require 'consult)
 (require 'hl-todo)
 (require 'project)
 
-(defvar my/todo-search-history nil)
+(defvar my/consult-todo-history nil)
 
-(defun my/todo--candidates ()
+(defun my/consult--todo-candidates ()
   "Collect highlighted marker lines in the accessible buffer."
   (save-excursion
     (goto-char (point-min))
@@ -25,14 +29,14 @@
   "Browse buffer TODO markers with source previews, respecting narrowing."
   (interactive)
   (consult--forbid-minibuffer)
-  (let ((candidates (my/todo--candidates)))
+  (let ((candidates (my/consult--todo-candidates)))
     (unless candidates (user-error "No TODO markers in the accessible buffer"))
     (consult--read candidates
                    :prompt "TODO: "
                    :category 'consult-location
                    :sort nil
                    :require-match t
-                   :history '(:input my/todo-search-history)
+                   :history '(:input my/consult-todo-history)
                    :lookup #'consult--lookup-location
                    :state (consult--location-state candidates))))
 
@@ -41,7 +45,20 @@
 This textual search also matches markers outside comments and strings."
   (interactive)
   (consult-ripgrep (project-root (project-current t))
-                  "#\\b(TODO|FIXME|NOTE|HACK|XXX)\\b#"))
+                   "#\\b(TODO|FIXME|NOTE|HACK|XXX)\\b#"))
 
-(provide 'my-todo-search)
-;;; my-todo-search.el ends here
+(defun my/consult-project-file (prompt files &optional predicate history defaults)
+  "Read from project FILES with Consult previews.
+PROMPT, PREDICATE, HISTORY and DEFAULTS follow project.el's file reader."
+  (expand-file-name
+   (consult--read (mapcar #'file-relative-name files)
+                  :prompt (concat prompt ": ")
+                  :predicate predicate
+                  :require-match t
+                  :category 'file
+                  :history history
+                  :add-history (mapcar #'file-relative-name (ensure-list defaults))
+                  :state (consult--file-preview))))
+
+(provide 'my-consult)
+;;; my-consult.el ends here

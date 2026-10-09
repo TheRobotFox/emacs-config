@@ -94,11 +94,6 @@
   (my/treesit-selection-mode 1)
   (message "Structural selection: C-M-= back · M-p/n siblings · M-u/d parent/child · C-c s filters"))
 
-(defun my/enable-treesit-extras ()
-  "Enable buffer-local structural indentation."
-  (setq-local tab-width 4 tab-always-indent nil
-              indent-region-function #'treesit-indent-region))
-
 (defun my/treesit--selections ()
   "Snapshot point, mark and activation for the real cursor, then fake cursors."
   (cons (list (point) (mark t) (and (region-active-p) t))
@@ -476,36 +471,6 @@ Prompt when PATTERN is nil."
 (with-eval-after-load 'multiple-cursors-core
   (dolist (command my/treesit--commands)
     (add-to-list 'mc--default-cmds-to-run-once command)))
-
-(defun my/create-src-file ()
-  "Create a new implementation buffer for the current C or C++ header."
-  (interactive)
-  (unless buffer-file-name
-    (user-error "This buffer does not visit a file"))
-  (let* ((file buffer-file-name)
-         (ext (file-name-extension file))
-         (new-ext (pcase ext ("h" "c") ("hpp" "cpp")
-                         (_ (user-error "Expected a .h or .hpp header"))))
-         (target (file-name-with-extension file new-ext))
-         namespaces)
-    (when (or (file-exists-p target) (get-file-buffer target))
-      (user-error "Implementation file or buffer already exists: %s" target))
-    ;; Inspect the header before switching buffers.  Plain C needs no parser.
-    (when (equal ext "hpp")
-      (unless (treesit-parser-list)
-        (user-error "C++ namespace detection requires a Tree-sitter parser"))
-      (let ((node (treesit-node-at (point))))
-        (while node
-          (when (equal (treesit-node-type node) "namespace_definition")
-            (when-let* ((name (treesit-node-child-by-field-name node "name")))
-              (push (treesit-node-text name t) namespaces)))
-          (setq node (treesit-node-parent node)))))
-    (let* ((namespace (string-join namespaces "::"))
-           (contents (concat "#include \"" (file-name-nondirectory file) "\"\n\n"
-                             (unless (string-empty-p namespace)
-                               (format "namespace %s {\n} // %s" namespace namespace)))))
-      (find-file-other-window target)
-      (atomic-change-group (insert contents)))))
 
 (provide 'my-treesit)
 ;;; my-treesit.el ends here

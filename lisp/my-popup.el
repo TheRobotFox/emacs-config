@@ -1,30 +1,18 @@
-;;; my-window-workflow.el --- Predictable navigation and supporting panes -*- lexical-binding: t; -*-
+;;; my-popup.el --- Supporting panes beside an editing window -*- lexical-binding: t; -*-
 
 ;;; Commentary:
 ;; Popper controls visibility; one display action gives supporting panes slots.
 ;; Documentation and processes coexist.  Direct commands retain source context.
+;; Which buffers count as documentation or processes, how a REPL is found and
+;; what a buffer's root directory is are configured through the variables below;
+;; this file knows no particular language or package.
 
 ;;; Code:
 (require 'cl-lib)
 (require 'project)
 (require 'eldoc)
 
-(declare-function python-shell-get-process "python")
-(declare-function sly-current-connection "sly")
-(declare-function sly-mrepl "sly-mrepl")
-(declare-function haskell-session-maybe "haskell-session")
-(declare-function haskell-session-process "haskell-session")
-(declare-function haskell-session-get "haskell-session")
-(declare-function haskell-process-process "haskell-process")
-(declare-function org-note-db-node-key "org-note-db-graph" (node))
-(declare-function org-note-db-current-node "org-note-db-view" (&optional db))
-(declare-function org-note-db-refresh "org-note-db-store" (&optional force))
-(declare-function org-note-db-backlinks "org-note-db-writing" ())
-(declare-function org-note-db-backlink-query "org-note-db-writing" (db context))
-(defvar org-note-db--view-context)
-(defvar org-note-db--view-query)
-
-(defgroup my/window-workflow nil "Supporting windows." :group 'windows)
+(defgroup my/popup nil "Supporting windows." :group 'windows)
 (defcustom my/popup-right-min-width 140
   "Minimum frame width in columns for a supporting pane on the right."
   :type 'integer)
@@ -34,29 +22,50 @@
 (defcustom my/popup-height 0.30
   "Fraction of frame height used by bottom supporting panes."
   :type 'float)
+(defcustom my/popup-documentation-modes '(help-mode)
+  "Major modes whose buffers are documentation panes."
+  :type '(repeat symbol))
+(defcustom my/popup-documentation-names '("\\` *\\*eldoc\\*")
+  "Buffer name regexps of documentation panes, for buffers shown before their mode."
+  :type '(repeat regexp))
+(defcustom my/popup-process-modes '(comint-mode eshell-mode vterm-mode term-mode)
+  "Major modes of shell and language interaction buffers."
+  :type '(repeat symbol))
+(defcustom my/popup-shell-modes '(eshell-mode shell-mode term-mode vterm-mode)
+  "Process modes that are plain shells rather than language REPLs."
+  :type '(repeat symbol))
+(defcustom my/popup-repl-functions nil
+  "Alist of (MODE . FUNCTION) locating a source buffer's REPL.
+FUNCTION is called with no arguments in the source buffer and returns an
+existing REPL buffer, or nil to fall back to process buffers sharing the
+project.  It may signal a `user-error' explaining how to start the REPL."
+  :type '(alist :key-type symbol :value-type function))
+(defcustom my/popup-root-function #'my/popup-project-root
+  "Function returning the current buffer's root directory, or nil."
+  :type 'function)
+
 (defvar-local my/popup-project-root nil)
 ;; Eldoc refreshes its buffer with `special-mode', which resets local variables.
 (put 'my/popup-project-root 'permanent-local t)
 (defvar eshell-buffer-name)
 
+(defun my/popup-project-root ()
+  "Return the current project's root directory, or nil."
+  (when-let* ((project (project-current nil))) (project-root project)))
+
 (defun my/popup-documentation-p (buffer)
   "Whether BUFFER contains documentation rather than interactive output."
   (with-current-buffer buffer
-    (or (derived-mode-p 'help-mode 'dictionary-mode
-                        'org-note-db-view-mode)
-        (equal (buffer-name) "*Note DB: Unresolved*")
-        ;; Dictionary displays its buffer before initializing the major mode.
-        (string-match-p "\\`\\*Dictionary\\*\\(?:<[0-9]+>\\)?\\'" (buffer-name))
-        (string-match-p "\\` *\\*eldoc\\*" (buffer-name)))))
+    (or (apply #'derived-mode-p my/popup-documentation-modes)
+        (seq-some (lambda (regexp) (string-match-p regexp (buffer-name)))
+                  my/popup-documentation-names))))
 
 (defun my/popup-process-p (buffer)
   "Whether BUFFER is a shell or language interaction buffer."
-  (with-current-buffer buffer
-    (derived-mode-p 'comint-mode 'eshell-mode 'vterm-mode 'term-mode
-                    'sly-mrepl-mode 'haskell-interactive-mode)))
+  (with-current-buffer buffer (apply #'derived-mode-p my/popup-process-modes)))
 
 (defun my/popup-reference-p (buffer)
-  "Classify supporting buffers, including modes derived from comint or help."
+  "Classify supporting buffers, including modes derived from the configured ones."
   (or (my/popup-documentation-p buffer) (my/popup-process-p buffer)))
 
 (defun my/popup-source-window ()
@@ -132,6 +141,15 @@ Documentation uses slot -1; processes and other output share slot 0."
   (select-window (my/popup-source-window))
   (switch-to-buffer buffer))
 
+(defun my/popup-toggle (predicate show)
+  "Hide the visible pane whose buffer satisfies PREDICATE, or call SHOW.
+SHOW runs in the editing window; PREDICATE receives a buffer."
+  (let ((window (cl-find-if (lambda (win) (funcall predicate (window-buffer win)))
+                            (window-list nil 'no-mini))))
+    (if window (quit-window nil window)
+      (select-window (my/popup-source-window))
+      (funcall show))))
+
 (defun my/popup-toggle-side ()
   "Move visible supporting panes between right and bottom.
 Keep their buffers, view positions, source context and keyboard focus.
@@ -179,9 +197,7 @@ Restore the previous layout if the requested side cannot accommodate them."
   "Return the source project's root, falling back to its current directory."
   (let ((root (expand-file-name
                (or my/popup-project-root
-                   (if (fboundp 'my/task-project-root)
-                       (my/task-project-root)
-                     (when-let* ((project (project-current nil))) (project-root project)))
+                   (funcall my/popup-root-function)
                    default-directory))))
     (file-name-as-directory (if (file-remote-p root) root (file-truename root)))))
 
@@ -208,75 +224,35 @@ Outside a project, use a shell associated with the source directory."
         (with-current-buffer buffer (setq-local my/popup-project-root root))))))
 
 (defun my/popup--associated-repl ()
-  "Return the source mode's associated REPL when its package is available."
-  (cond
-   ((my/popup-process-p (current-buffer)) (current-buffer))
-   ((and (derived-mode-p 'python-mode 'python-ts-mode)
-         (fboundp 'python-shell-get-process))
-    (when-let* ((process (python-shell-get-process))) (process-buffer process)))
-   ((and (derived-mode-p 'lisp-mode)
-         (fboundp 'sly-current-connection) (sly-current-connection))
-    (require 'sly-mrepl)
-    (sly-mrepl))
-   ((and (derived-mode-p 'haskell-mode 'haskell-ts-mode)
-         (fboundp 'haskell-session-maybe))
-    ;; `haskell-session-interactive-buffer' can create and select a new REPL
-    ;; even when the session has no process.  Navigation must only reuse one.
-    (let* ((session (haskell-session-maybe))
-           (state (and session (haskell-session-process session)))
-           (process (and state (haskell-process-process state)))
-           (buffer (and session (haskell-session-get session 'interactive-buffer))))
-      (unless (and (processp process) (process-live-p process)
-                   (buffer-live-p buffer))
-        (user-error "No running GHCi session; start it with M-x haskell-process-load-file"))
-      buffer))))
+  "Return the source buffer's REPL through `my/popup-repl-functions'."
+  (if (my/popup-process-p (current-buffer)) (current-buffer)
+    (seq-some (lambda (entry)
+                (and (derived-mode-p (car entry)) (funcall (cdr entry))))
+              my/popup-repl-functions)))
 
 (defun my/popup-repl ()
-  "Toggle note backlinks for Org, otherwise select the source's project REPL.
+  "Select the source buffer's REPL, or a project REPL when its mode has none.
 Start language runtimes with their normal package commands first."
   (interactive)
-  (if (with-current-buffer (window-buffer (my/popup-source-window))
-        (derived-mode-p 'org-mode))
-      (my/popup-notes)
-    (pcase-let* ((`(,source . ,root) (my/popup--context))
-		 (buffer
-                  (with-current-buffer (window-buffer source)
-                    (or (my/popup--associated-repl)
-			(let ((candidates
-                               (cl-remove-if-not
-				(lambda (buf)
-                                  (and (my/popup-process-p buf)
-                                       (with-current-buffer buf
-					 (and (not (derived-mode-p 'eshell-mode 'shell-mode 'term-mode 'vterm-mode))
-                                              (equal root (my/popup-root))))))
-				(buffer-list))))
-                          (cond ((null candidates)
-				 (user-error "No project REPL; start one with your language's normal command"))
-				((null (cdr candidates)) (car candidates))
-				(t (get-buffer (completing-read "Project REPL: "
-								(mapcar #'buffer-name candidates) nil t)))))))))
-      (with-current-buffer buffer (setq-local my/popup-project-root root))
-      (my/popup-select buffer))))
-
-(defun my/popup-notes ()
-  "Toggle the graph backlink query for the editing window."
-  (interactive)
-  (require 'my-org-note-db)
-  (let* ((source (my/popup-source-window))
-         (key (with-current-buffer (window-buffer source)
-                (org-note-db-node-key
-                 (or (org-note-db-current-node (org-note-db-refresh))
-                     (user-error "No graph node in the editing window")))))
-         (window (cl-find-if
-                  (lambda (window)
-                    (with-current-buffer (window-buffer window)
-                      (and (derived-mode-p 'org-note-db-view-mode)
-                           (equal org-note-db--view-context key)
-                           (eq org-note-db--view-query #'org-note-db-backlink-query))))
-                  (window-list nil 'no-mini))))
-    (if window (quit-window nil window)
-      (select-window source)
-      (org-note-db-backlinks))))
+  (pcase-let* ((`(,source . ,root) (my/popup--context))
+               (buffer
+                (with-current-buffer (window-buffer source)
+                  (or (my/popup--associated-repl)
+                      (let ((candidates
+                             (cl-remove-if-not
+                              (lambda (buf)
+                                (and (my/popup-process-p buf)
+                                     (with-current-buffer buf
+                                       (and (not (apply #'derived-mode-p my/popup-shell-modes))
+                                            (equal root (my/popup-root))))))
+                              (buffer-list))))
+                        (cond ((null candidates)
+                               (user-error "No project REPL; start one with your language's normal command"))
+                              ((null (cdr candidates)) (car candidates))
+                              (t (get-buffer (completing-read "Project REPL: "
+                                                              (mapcar #'buffer-name candidates) nil t)))))))))
+    (with-current-buffer buffer (setq-local my/popup-project-root root))
+    (my/popup-select buffer)))
 
 (defun my/popup-eldoc ()
   "Toggle the full Eldoc pane for the source window, without selecting it.
@@ -291,24 +267,5 @@ New documentation requests use Eldoc's normal asynchronous display pipeline."
             (progn (my/popup-display buffer) (eldoc t))
           (eldoc t))))))
 
-(defun my/isearch-forward-other-window (prefix)
-  "Function to isearch-forward in other-window."
-  (interactive "P")
-  (unless (one-window-p)
-    (save-excursion
-      (let ((next (if prefix -1 1)))
-        (other-window next)
-        (isearch-forward)
-        (other-window (- next))))))
-(defun my/isearch-backward-other-window (prefix)
-  "Function to isearch-backward in other-window."
-  (interactive "P")
-  (unless (one-window-p)
-    (save-excursion
-      (let ((next (if prefix 1 -1)))
-        (other-window next)
-        (isearch-backward)
-        (other-window (- next))))))
-
-(provide 'my-window-workflow)
-;;; my-window-workflow.el ends here
+(provide 'my-popup)
+;;; my-popup.el ends here

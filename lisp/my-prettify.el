@@ -1,8 +1,10 @@
-;;; my-ligatures.el --- Language symbols and optional math notation -*- lexical-binding: t; -*-
+;;; my-prettify.el --- One symbol table, per-mode prettification -*- lexical-binding: t; -*-
 
 ;;; Commentary:
-;; Font shaping is configured separately in config.org.
-;; Language tables extend built-in prettification; math notation has its own toggle.
+;; Symbols are named once in `my/pretty-symbols'; modes declare which source
+;; texts map to which names with `my/prettify-set'.  Optional math notation
+;; (subscripts and deltas) is declared with `my/math-set' and toggled per
+;; buffer by `my/math-symbols-mode'.  Font ligatures are configured separately.
 
 ;;; Code:
 (require 'cl-lib)
@@ -10,8 +12,7 @@
 (require 'seq)
 
 (defvar my/pretty-symbols
-  '(
-    (composition . ?∘)
+  '((composition . ?∘)
     (arrow . ?→)
     (left-arrow . ?←)
 
@@ -52,62 +53,21 @@ After editing, re-evaluate the declarations and run `my/prettify-setup'.")
               (_ (error "Expected (TEXT SYMBOL-NAME), got %S" entry))))
           entries))
 
-(defmacro my/prettify-set (modes &rest entries)
-  "Declare ENTRIES as (TEXT SYMBOL-NAME) pairs for unquoted MODES.
-MODES is a mode name or list of mode names.  No entries clears their tables."
-  (declare (indent 1))
-  `(my/prettify-register ',modes (my/prettify--symbols ',entries)))
-
 (defvar my/prettify-rules nil
   "Alist of major modes and their ordinary `prettify-symbols-alist' entries.
 Register complete tables with `my/prettify-set'.")
+(defvar my/math-rules nil
+  "Mode-specific notation enabled by `my/math-symbols-mode'.")
 (defvar-local my/prettify--base nil)
 (defvar-local my/prettify--installed nil)
 (defvar-local my/prettify--initialized nil)
 (defvar my/math-symbols-mode)
 
-(defface my/haskell-composition-face
-  '((t (:height 1.4)))
-  "Size of composition symbols."
-  :group 'faces)
-
-(defcustom my/haskell-composition-raise -0.1
-  "Vertical offset for enlarged composition symbols, in character heights.
-Negative values lower the symbol.  Refontify buffers after changing this."
-  :type 'number
-  :group 'faces)
-
-(defconst my/haskell-composition-keywords
-  '(("\\."
-     (0 (when (get-text-property (match-beginning 0) 'composition)
-          (put-text-property (match-beginning 0) (match-end 0)
-                             'display (list 'raise my/haskell-composition-raise))
-          'my/haskell-composition-face)
-        prepend)))
-  "Apply size after prettification has identified composition operators.")
-
-(defun my/haskell-composition-font-lock-setup ()
-  "Keep composition sizing after prettification, and remove it when disabled."
-  (font-lock-remove-keywords nil my/haskell-composition-keywords)
-  (setq-local font-lock-extra-managed-props
-              (cons 'display (remq 'display font-lock-extra-managed-props)))
-  (when prettify-symbols-mode
-    (font-lock-add-keywords nil my/haskell-composition-keywords 'append))
-  (font-lock-flush))
-
-(defun my/haskell-prettify-compose-p (start end match)
-  "Keep dots in qualified names, numbers and larger operators literal.
-Prettify standalone dots, retaining the default string/comment checks."
-  (and (prettify-symbols-default-compose-p start end match)
-       (or (not (equal match "."))
-           (not (or (memq (char-syntax (or (char-before start) ?\s)) '(?w ?_ ?. ?\\))
-                    (memq (char-syntax (or (char-after end) ?\s)) '(?w ?_ ?. ?\\)))))))
-
-(defun my/haskell-prettify-setup ()
-  "Use Haskell-aware boundaries for symbolic substitutions."
-  (setq-local prettify-symbols-compose-predicate #'my/haskell-prettify-compose-p)
-  (add-hook 'prettify-symbols-mode-hook #'my/haskell-composition-font-lock-setup nil t)
-  (my/haskell-composition-font-lock-setup))
+(defmacro my/prettify-set (modes &rest entries)
+  "Declare ENTRIES as (TEXT SYMBOL-NAME) pairs for unquoted MODES.
+MODES is a mode name or list of mode names.  No entries clears their tables."
+  (declare (indent 1))
+  `(my/prettify-register ',modes (my/prettify--symbols ',entries)))
 
 (defun my/prettify-register (modes symbols)
   "Replace the SYMBOLS table for MODES (one mode or a list).
@@ -115,14 +75,6 @@ Nil removes the table.  Re-evaluating a declaration does not append rules.
 Use `my/prettify-setup' to refresh an already open buffer."
   (dolist (mode (ensure-list modes))
     (setf (alist-get mode my/prettify-rules nil t) (copy-tree symbols))))
-
-(defun my/prettify--merge (&rest tables)
-  "Merge TABLES, keeping the first entry for each text string."
-  (seq-uniq (apply #'append tables)
-            (lambda (a b) (equal (car a) (car b)))))
-
-(defvar my/math-rules nil
-  "Mode-specific notation enabled by `my/math-symbols-mode'.")
 
 (defun my/math-register (modes bases indices deltas symbols)
   "Register subscript BASES, INDICES, DELTAS and explicit SYMBOLS for MODES.
@@ -153,6 +105,11 @@ SYMBOLS uses the same (TEXT SYMBOL-NAME) pairs as `my/prettify-set'."
   `(my/math-register ',modes ',subscripts ,indices ',deltas
      (my/prettify--symbols ',symbols)))
 
+(defun my/prettify--merge (&rest tables)
+  "Merge TABLES, keeping the first entry for each text string."
+  (seq-uniq (apply #'append tables)
+            (lambda (a b) (equal (car a) (car b)))))
+
 (defun my/prettify--mode-rules (table)
   "Merge TABLE entries from the current mode through its parents."
   (apply #'my/prettify--merge
@@ -161,8 +118,9 @@ SYMBOLS uses the same (TEXT SYMBOL-NAME) pairs as `my/prettify-set'."
 
 (defun my/prettify-setup (&optional enable)
   "Refresh symbols, preserving major-mode defaults and the user's toggle.
-Precedence is exact mode, nearest parent, math notation, then existing defaults.
-Enable prettification on first setup when rules apply, or when ENABLE is non-nil."
+Precedence is exact mode, nearest parent, math notation, then existing
+defaults.  Enable prettification on first setup when rules apply, or when
+ENABLE is non-nil."
   (interactive)
   (let* ((rules (my/prettify--mode-rules my/prettify-rules))
          (math (and my/math-symbols-mode (my/prettify--mode-rules my/math-rules)))
@@ -190,5 +148,5 @@ The ordinary `prettify-symbols-mode' command toggles all symbol display."
   :lighter " Math"
   (my/prettify-setup my/math-symbols-mode))
 
-(provide 'my-ligatures)
-;;; my-ligatures.el ends here
+(provide 'my-prettify)
+;;; my-prettify.el ends here

@@ -1,5 +1,11 @@
-;;; my-reading.el --- Shared document layout -*- lexical-binding: t; -*-
+;;; my-reading.el --- Layout for reading longer text -*- lexical-binding: t; -*-
 
+;;; Commentary:
+;; Centered margins come from Olivetti; this file adds spacing, a text scale
+;; fitted to the window, and a matching style for EWW pages.  Enable through
+;; `olivetti-mode-hook' and `eww-mode-hook'.
+
+;;; Code:
 (require 'face-remap)
 
 (defvar olivetti-mode)
@@ -65,6 +71,22 @@
       (setq my/reading-previous-text-scale nil
             my/reading-previous-line-spacing nil
             my/reading-auto-scale nil))))
+
+;;;###autoload
+(defun my/reading-eww-setup ()
+  "Apply a compact, theme-aware reading style to an EWW buffer."
+  (setq-local shr-use-fonts t
+              shr-use-colors nil
+              shr-width nil
+              shr-max-width nil
+              shr-fill-text nil
+              shr-bullet "• "
+              shr-hr-line ?─
+              shr-max-image-proportion 0.7)
+  (display-line-numbers-mode -1)
+  (dolist (heading '((shr-h1 1.5) (shr-h2 1.3) (shr-h3 1.15)))
+    (face-remap-add-relative (car heading)
+                             :height (cadr heading) :weight 'bold :slant 'normal)))
 
 (provide 'my-reading)
 ;;; my-reading.el ends here

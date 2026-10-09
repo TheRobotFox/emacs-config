@@ -1,0 +1,30 @@
+# Package manager state (straight/versions/default.el is the lockfile and is tracked)
+/straight/*
+!/straight/versions/
+/eln-cache/
+
+# Emacs runtime state
+/auto-save/
+/auto-save-list/
+/backup/
+/eshell/
+/transient/
+/tree-sitter/
+/url/
+/.cache/
+/history
+/recentf
+/bookmarks.eld
+/projects.eld
+/tramp
+/network-security.eld
+/.org-id-locations
+/org-roam.db
+/.mc-lists.el
+
+# Build and editor artifacts
+*.elc
+*~
+\#*\#
+.\#*
+/org-tex-*.tex

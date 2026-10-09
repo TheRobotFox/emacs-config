@@ -2,7 +2,7 @@
 
 #+PROPERTY: header-args:emacs-lisp :tangle init.el :results none
 
-Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
+Edit here and tangle with =C-c C-v t=; =init.el= is tracked. Components live in =lisp/=, this file wires them.
 
 * Bootstrap
 
@@ -25,6 +25,8 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
 
 ** Straight and use-package
 
+Built-in libraries at their ELPA versions come from Emacs. Pin with =straight-freeze-versions=.
+
 #+begin_src emacs-lisp
 (defvar bootstrap-version)
 (let ((bootstrap-file
@@ -42,22 +44,17 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
       (eval-print-last-sexp)))
   (load bootstrap-file nil 'nomessage))
 
-(straight-use-package 'use-package)
-(setq straight-use-package-by-default t)
-(setq straight-allow-recipe-inheritance t)
-(setq straight-host-usernames '((github . "TheRobotFox")))
-
-;; Register Eglot before helpers load project.el or Eldoc.
-(straight-use-package 'eglot)
-#+end_src
-
-** Diminish
-
-#+begin_src emacs-lisp
+(setq straight-use-package-by-default t
+      straight-allow-recipe-inheritance t
+      straight-host-usernames '((github . "TheRobotFox")))
+(dolist (package '(use-package bind-key eglot project eldoc jsonrpc xref flymake
+                   external-completion seq map let-alist))
+  (add-to-list 'straight-built-in-pseudo-packages package))
+(require 'use-package)
 (use-package diminish)
 #+end_src
 
-* Core Emacs
+* Core defaults
 
 ** Files, backups, and autosave
 
@@ -71,15 +68,16 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
 (setq create-lockfiles nil)
 (auto-insert-mode t)
 (global-auto-revert-mode 1)
-(setq dired-dwim-target t)
 (setq auto-revert-interval 1)
+(setq dired-dwim-target t)
 (recentf-mode 1)
 #+end_src
 
-** History and persistence
+** History
 
 #+begin_src emacs-lisp
 (use-package savehist
+  :straight nil
   :config
   (setq history-length 100)
   (put 'minibuffer-history 'history-length 50)
@@ -89,27 +87,14 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
   (savehist-mode 1))
 #+end_src
 
-** Editing defaults
+** Editing defaults and general keys
 
 #+begin_src emacs-lisp
 (setq-default fill-column 1100)
 (global-visual-line-mode t)
 (repeat-mode t)
 (keymap-global-unset "C-x C-c")
-(keymap-global-set "C-x C-k l" #'list-keyboard-macros)
-#+end_src
 
-** Performance diagnostics
-
-#+begin_src emacs-lisp
-(use-package my-performance
-  :straight nil
-  :commands (my/performance-start my/performance-stop my/performance-captures))
-#+end_src
-
-** General keybindings
-
-#+begin_src emacs-lisp
 (defun my/open-config ()
   "Open the literate configuration."
   (interactive)
@@ -119,34 +104,27 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
 (keymap-global-set "C-S-j" #'duplicate-line)
 (keymap-global-set "C-x O" (lambda () (interactive) (other-window -1)))
 (keymap-global-set "C-x C" #'my/open-config)
+(keymap-global-set "C-x C-k l" #'list-keyboard-macros)
 (keymap-global-set "C-c i" #'insert-char)
-#+end_src
 
-** which-key
-
-#+begin_src emacs-lisp
 (use-package which-key
+  :straight nil
   :diminish
-  :custom
-  (which-key-idle-secondary-delay 0.3)
-  :config
-  (which-key-mode t))
+  :custom (which-key-idle-secondary-delay 0.3)
+  :config (which-key-mode t))
 #+end_src
 
-* Appearance and windows
+* Appearance
 
-** Frame defaults
+** Frame, fonts, theme, and icons
 
 #+begin_src emacs-lisp
 (setq inhibit-startup-screen t)
 (menu-bar-mode -1)
 (tool-bar-mode -1)
 (scroll-bar-mode -1)
-#+end_src
+(pixel-scroll-precision-mode t)
 
-** Fonts
-
-#+begin_src emacs-lisp
 (setq my/font-size 12)
 (setq my/font-family-variable "Sans Serif"
       my/font-family-fixed "Fira Code hs")
@@ -156,28 +134,22 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
   (set-face-font 'default fixed)
   (set-face-font 'variable-pitch variable)
   (add-to-list 'default-frame-alist (cons 'font fixed)))
-#+end_src
 
-** Theme
-
-#+begin_src emacs-lisp
 (use-package color-theme-sanityinc-tomorrow
   :config
   (load-theme 'sanityinc-tomorrow-day))
-#+end_src
 
-** Icons
-
-#+begin_src emacs-lisp
 (use-package all-the-icons)
 (use-package all-the-icons-dired
   :hook (dired-mode . all-the-icons-dired-mode))
 #+end_src
 
-** Ligatures and prettification
+** Symbols and ligatures
+
+One symbol table; language sections map their texts to it. Math notation is a per-buffer toggle.
 
 #+begin_src emacs-lisp
-(require 'my-ligatures)
+(require 'my-prettify)
 (setopt prettify-symbols-unprettify-at-point 'right-edge)
 (add-hook 'after-change-major-mode-hook #'my/prettify-setup)
 
@@ -206,31 +178,36 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
   :hook (after-init . global-ligature-mode))
 #+end_src
 
-** Scrolling
+* Windows and panes
+
+** Supporting panes
+
+Side panes for documentation and processes; language sections register their REPLs.
 
 #+begin_src emacs-lisp
-(pixel-scroll-precision-mode t)
-#+end_src
+(use-package my-popup
+  :straight nil
+  :demand t
+  :custom
+  (my/popup-documentation-modes '(help-mode dictionary-mode))
+  ;; Dictionary displays its buffer before initializing the major mode.
+  (my/popup-documentation-names '("\\` *\\*eldoc\\*" "\\`\\*Dictionary\\*\\(?:<[0-9]+>\\)?\\'"))
+  (my/popup-process-modes '(comint-mode eshell-mode vterm-mode term-mode))
+  :config
+  (defvar-keymap my/popup-command-map
+    "e" #'my/popup-eshell
+    "r" #'my/popup-repl
+    "d" #'my/popup-eldoc
+    "s" #'my/popup-toggle-side)
+  (keymap-global-set "M-o" my/popup-command-map))
 
-** Popper
-
-*** Supporting panes and navigation
-
-#+begin_src emacs-lisp
-(require 'my-window-workflow)
-(defvar-keymap my/popup-command-map
-  "e" #'my/popup-eshell
-  "r" #'my/popup-repl
-  "d" #'my/popup-eldoc
-  "s" #'my/popup-toggle-side)
-(keymap-global-set "M-o" my/popup-command-map)
 (with-eval-after-load 'dired
   (keymap-set dired-mode-map "<mouse-2>" #'dired-mouse-find-file))
 (setopt eldoc-echo-area-use-multiline-p nil
         eldoc-echo-area-prefer-doc-buffer t)
 #+end_src
 
-*** Popup tracking
+** Popper
 
 #+begin_src emacs-lisp
 (use-package popper
@@ -245,14 +222,9 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
           "Output\\*$"
           "\\*Async Shell Command\\*"
           "\\*Flycheck error messages\\*"
-          "\\` *\\*eldoc\\*"
-          "\\`\\*\\(?:eshell\\|shell\\|vterm\\|term\\)"
           my/popup-reference-p
-          haskell-interactive-mode
           help-mode
-          compilation-mode
-          eshell-mode
-          vterm-mode))
+          compilation-mode))
   (setq popper-group-function #'my/popup-root
         popper-display-function #'my/popup-display)
   :config
@@ -261,58 +233,36 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
   (popper-echo-mode +1))
 #+end_src
 
-* Completion, search, and navigation
+* Completion and search
 
-** Completion defaults
+** Minibuffer
 
 #+begin_src emacs-lisp
 (setopt read-file-name-completion-ignore-case t
         read-buffer-completion-ignore-case t
-        completion-ignore-case t)
-#+end_src
-
-** Minibuffer
-
-*** Recursive Minibuffer
-
-#+begin_src emacs-lisp
-(setopt enable-recursive-minibuffers t
+        completion-ignore-case t
+        enable-recursive-minibuffers t
         read-extended-command-predicate #'command-completion-default-include-p
         minibuffer-prompt-properties
         '(read-only t cursor-intangible t face minibuffer-prompt))
-#+end_src
 
-*** Vertico
-
-#+begin_src emacs-lisp
 (use-package vertico
-  :custom
-  (vertico-resize t)
-  :init
-  (vertico-mode))
-#+end_src
+  :custom (vertico-resize t)
+  :init (vertico-mode))
 
-*** Orderless
-
-#+begin_src emacs-lisp
 (use-package orderless
   :custom
   (completion-styles '(orderless basic))
   (completion-category-defaults nil)
   (completion-category-overrides '((file (styles partial-completion)))))
-#+end_src
 
-*** Marginalia
-
-#+begin_src emacs-lisp
 (use-package marginalia
   :bind (:map minibuffer-local-map
               ("M-A" . marginalia-cycle))
-  :init
-  (marginalia-mode))
+  :init (marginalia-mode))
 #+end_src
 
-** In-buffer completion: Corfu and Cape
+** In-buffer completion
 
 #+begin_src emacs-lisp
 (use-package corfu
@@ -327,11 +277,7 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
   (global-corfu-mode 1)
   (corfu-history-mode 1)
   (corfu-popupinfo-mode 1))
-#+end_src
 
-*** Cape
-
-#+begin_src emacs-lisp
 (use-package cape
   :bind ("C-c p" . cape-prefix-map)
   :init
@@ -346,6 +292,8 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
 #+end_src
 
 ** Consult
+
+=my-consult= adds previews for TODO markers (=M-s t/T=) and project files (=C-x p f=).
 
 #+begin_src emacs-lisp
 (use-package consult
@@ -363,7 +311,6 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
    ("C-x r b" . consult-bookmark)
    ("C-x p b" . consult-project-buffer)
 
-   ;; Custom M-# bindings for fast register access
    ("M-#" . consult-register-load)
    ("M-'" . consult-register-store)
    ("C-M-#" . consult-register)
@@ -386,19 +333,21 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
    ("M-s o" . consult-line)
    ("M-s O" . consult-line-multi)
    ("M-s e" . consult-isearch-history)
+   ("M-s t" . my/consult-todos)
+   ("M-s T" . my/consult-project-todos)
    :map isearch-mode-map
    ("M-e" . consult-isearch-history)
    ("M-s e" . consult-isearch-history)
    ("M-s o" . consult-line)
    ("M-s O" . consult-line-multi))
   :init
-  (autoload 'my/project-read-file-name "my-project-search")
+  (autoload 'my/consult-todos "my-consult" nil t)
+  (autoload 'my/consult-project-todos "my-consult" nil t)
+  (autoload 'my/consult-project-file "my-consult")
   (with-eval-after-load 'project
-    (setq project-read-file-name-function #'my/project-read-file-name))
+    (setq project-read-file-name-function #'my/consult-project-file))
   (advice-add #'register-preview :override #'consult-register-window)
   (setq register-preview-delay 0.5)
-
-  ;; Use Consult to select xref locations with preview
   (setq xref-show-xrefs-function #'consult-xref
         xref-show-definitions-function #'consult-xref))
 #+end_src
@@ -414,89 +363,54 @@ Edit this file; tangle with =C-c C-v t=. Helpers live in =lisp/=.
    :map minibuffer-local-map
    ("C-c C-o" . embark-export))
   :init
-  ;; Optionally replace the key help with a completing-read interface
   (setq prefix-help-command #'embark-prefix-help-command)
   :config
-  ;; Hide the mode line of the Embark live/completions buffers
   (add-to-list 'display-buffer-alist
                '("\\`\\*Embark Collect \\(Live\\|Completions\\)\\*"
                  nil
                  (window-parameters (mode-line-format . none)))))
 
 (use-package embark-consult)
-#+end_src
-
-** wgrep
-
-#+begin_src emacs-lisp
 (use-package wgrep)
 #+end_src
 
 ** Avy and Isearch
 
 #+begin_src emacs-lisp
+(defun my/isearch-other-window (backward)
+  "Search forward in the next window, or BACKWARD in the previous one."
+  (interactive "P")
+  (unless (one-window-p)
+    (save-excursion
+      (let ((next (if backward -1 1)))
+        (other-window next)
+        (if backward (isearch-backward) (isearch-forward))
+        (other-window (- next))))))
+
 (use-package avy
   :bind
   ("M-g w" . avy-goto-word-0)
   ("C-M-j" . avy-pop-mark)
   ("M-J" . avy-resume)
   ("M-j" . avy-goto-char-timer)
+  ("C-M-s" . my/isearch-other-window)
+  ("C-M-r" . (lambda () (interactive) (my/isearch-other-window t)))
   :custom
   (avy-background t)
   (avy-all-windows nil)
   :config
   (avy-setup-default)
-  (keymap-set isearch-mode-map "M-j" 'avy-isearch)
-  (keymap-set global-map "C-M-s" 'my/isearch-forward-other-window)
-  (keymap-set global-map "C-M-r" 'my/isearch-backward-other-window))
-#+end_src
+  (keymap-set isearch-mode-map "M-j" 'avy-isearch))
 
-** Phi-search
-
-#+begin_src emacs-lisp
 (use-package phi-search
-  :config
-  (keymap-global-set "M-%" 'phi-replace-query)
-  (keymap-global-set "C-s" #'isearch-forward)
-  (keymap-global-set "C-r" #'isearch-backward))
+  :bind ("M-%" . phi-replace-query))
 #+end_src
 
-** Documentation
-
-#+begin_src emacs-lisp
-(use-package my-documentation
-  :straight nil
-  :commands my/dictionary-at-point
-  :bind ("C-h D" . my/documentation-lookup))
-
-(use-package dictionary
-  :straight nil
-  :commands dictionary-search
-  :init
-  (with-eval-after-load 'text-mode
-    (keymap-set text-mode-map "C-h ." #'my/dictionary-at-point))
-  (with-eval-after-load 'eww
-    (keymap-set eww-mode-map "C-h ." #'my/dictionary-at-point))
-  (with-eval-after-load 'olivetti
-    (keymap-set olivetti-mode-map "C-h ." #'my/dictionary-at-point)
-    (keymap-set olivetti-mode-map "C-h D" #'my/documentation-lookup))
-  :custom
-  (dictionary-server "dict.org")
-  (dictionary-default-dictionary "gcide")
-  (dictionary-display-definition-function nil)
-  (dictionary-read-word-function #'dictionary-completing-read-word)
-  (dictionary-read-dictionary-function #'dictionary-completing-read-dictionary))
-
-(use-package devdocs
-  :commands (devdocs-lookup devdocs-install devdocs-peruse)
-  :hook
-  ((c-mode c-ts-mode) . (lambda () (setq-local devdocs-current-docs '("c"))))
-  ((c++-mode c++-ts-mode) . (lambda () (setq-local devdocs-current-docs '("cpp")))))
-#+end_src
+* Reading and documentation
 
 ** Reading layout
 
-Org and EWW share centered margins and adaptive text size. Toggle elsewhere with =M-x olivetti-mode=.
+Org and EWW share margins, spacing and adaptive text size; =M-x olivetti-mode= elsewhere.
 
 #+begin_src emacs-lisp
 (use-package olivetti
@@ -514,44 +428,65 @@ Org and EWW share centered margins and adaptive text size. Toggle elsewhere with
   (keymap-unset olivetti-mode-map "C-c |")
   (keymap-unset olivetti-mode-map "C-c {")
   (keymap-unset olivetti-mode-map "C-c }"))
-#+end_src
 
-** Web reading
-
-EWW uses a compact reading layout; =R= toggles its built-in reader view.
-
-#+begin_src emacs-lisp
 (use-package eww
   :straight nil
   :commands (eww eww-open-file)
-  :hook (eww-mode . my/eww-reading-setup)
+  :hook (eww-mode . my/reading-eww-setup)
+  :custom (eww-header-line-format "%t")
+  :init (autoload 'my/reading-eww-setup "my-reading"))
+#+end_src
+
+** Documentation lookup
+
+=C-h D= prompts, =C-h .= uses the thing at point; a prefix selects the provider.
+
+#+begin_src emacs-lisp
+(use-package my-documentation
+  :straight nil
+  :bind (("C-h D" . my/documentation-lookup)
+         ("C-h ." . my/documentation-at-point))
+  :config
+  (setq my/documentation-providers
+        `((haskell-mode . my/haskell-hoogle)
+          (emacs-lisp-mode . my/documentation-describe-symbol)
+          (,(lambda () (bound-and-true-p olivetti-mode)) . my/documentation-dictionary)
+          (text-mode . my/documentation-dictionary)
+          (eww-mode . my/documentation-dictionary)
+          (t . my/documentation-devdocs))))
+
+(use-package dictionary
+  :straight nil
+  :commands dictionary-search
   :custom
-  (eww-header-line-format "%t")
-  :init
-  (autoload 'my/eww-reading-setup "my-eww"))
+  (dictionary-server "dict.org")
+  (dictionary-default-dictionary "gcide")
+  (dictionary-display-definition-function nil)
+  (dictionary-read-word-function #'dictionary-completing-read-word)
+  (dictionary-read-dictionary-function #'dictionary-completing-read-dictionary))
+
+(use-package devdocs
+  :commands (devdocs-lookup devdocs-install devdocs-peruse)
+  :hook
+  ((c-mode c-ts-mode) . (lambda () (setq-local devdocs-current-docs '("c"))))
+  ((c++-mode c++-ts-mode) . (lambda () (setq-local devdocs-current-docs '("cpp")))))
 #+end_src
 
 * Editing tools
 
-** expand-region
+** Regions, pairs, and snippets
+
+=C-c e= changes or deletes surrounding pairs.
 
 #+begin_src emacs-lisp
 (use-package expand-region
   :commands (er/expand-region er/contract-region))
-#+end_src
 
-** embrace
-
-#+begin_src emacs-lisp
 (use-package embrace
   :bind
-  ("C-x C-c" . embrace-change)
-  ("C-x C-d" . embrace-delete))
-#+end_src
+  ("C-c e c" . embrace-change)
+  ("C-c e d" . embrace-delete))
 
-** yasnippet
-
-#+begin_src emacs-lisp
 (use-package yasnippet
   :bind
   (("M-SPC" . yas-expand)
@@ -566,11 +501,7 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
   :after cape
   :config
   (add-hook 'completion-at-point-functions #'yasnippet-capf t))
-#+end_src
 
-** Smartparens
-
-#+begin_src emacs-lisp
 (use-package smartparens
   :config
   (require 'smartparens-config)
@@ -578,7 +509,7 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
   (smartparens-global-mode 1))
 #+end_src
 
-** multiple-cursors
+** Multiple cursors
 
 #+begin_src emacs-lisp
 (use-package multiple-cursors
@@ -600,22 +531,26 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
   (keymap-global-set "C-S-c e" 'mc/mark-more-like-this-extended))
 #+end_src
 
+** Structural selection
+
+=C-=/C-M-== expand and contract by syntax node; =C-c s= filters.
+
+#+begin_src emacs-lisp
+(require 'my-treesit)
+(keymap-global-set "C-=" #'my/treesit-expand)
+(keymap-global-set "C-M-=" #'my/treesit-contract)
+(keymap-global-set "C-c s" my/treesit-action-map)
+#+end_src
+
 * Development
 
-** Common programming defaults
+** Programming defaults
 
 #+begin_src emacs-lisp
 (add-hook 'prog-mode-hook #'display-line-numbers-mode)
-#+end_src
 
-#+begin_src emacs-lisp
 (use-package hl-todo
-  :demand t
-  :bind (("M-s t" . my/consult-todos)
-         ("M-s T" . my/consult-project-todos))
-  :config
-  (require 'my-todo-search)
-  (global-hl-todo-mode 1))
+  :config (global-hl-todo-mode 1))
 #+end_src
 
 ** Git
@@ -628,8 +563,7 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
   (magit-commit-diff-inhibit-same-window t)
   (magit-display-buffer-function
    (lambda (buffer)
-     (display-buffer buffer
-                     '(display-buffer-same-window)))))
+     (display-buffer buffer '(display-buffer-same-window)))))
 
 (use-package smerge-mode
   :straight nil
@@ -646,94 +580,79 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
   (keymap-set smerge-mode-map "C-c v" my/smerge-repeat-map))
 #+end_src
 
-** Vterm
+** Terminals
 
 #+begin_src emacs-lisp
 (use-package vterm
   :commands vterm)
 #+end_src
 
-** Eglot
+** Language map
+
+=C-c l=: language-server commands globally, mode-local entries in the language sections.
 
 #+begin_src emacs-lisp
 (use-package eglot
-  :custom
-  (eglot-confirm-server-edits nil)
+  :straight nil
+  :custom (eglot-confirm-server-edits nil)
   :bind
   ("C-c l a" . eglot-code-actions)
   ("C-c l r" . eglot-rename)
   ("C-c l h" . eglot-show-call-hierarchy)
   ("C-c l f" . eglot-format))
-#+end_src
 
-#+begin_src emacs-lisp
 (use-package consult-eglot
   :after eglot
   :bind (:map eglot-mode-map
               ([remap xref-find-apropos] . consult-eglot-symbols)))
 #+end_src
 
-** Tree-sitter helpers
+** LaTeX in comments
+
+LaTeX previews in code comments; preamble in =latex/preview-master.tex=.
 
 #+begin_src emacs-lisp
-(require 'my-treesit)
-(keymap-global-set "C-=" #'my/treesit-expand)
-(keymap-global-set "C-M-=" #'my/treesit-contract)
-(keymap-global-set "C-c s" my/treesit-action-map)
-(autoload 'my/c-doc-insert "my-c-doc" nil t)
-(keymap-set my/treesit-action-map "d" #'my/c-doc-insert)
+(require 'my-latex-preview)
+
+(use-package preview-auto
+  :straight (:host github :repo "ultronozm/preview-auto.el")
+  :commands preview-auto-mode
+  :hook (prog-mode . my/latex-comment-preview-auto-enable)
+  :custom (preview-auto-interval 0.3))
 #+end_src
 
-** Languages
+** C and C++
 
-*** Maxima
-
-#+begin_src emacs-lisp
-(use-package maxima
-  :config
-  (add-to-list 'load-path "/usr/share/emacs/site-lisp/maxima/")
-  (autoload 'imaxima "imaxima" "Frontend for maxima with Image support" t)
-  (autoload 'imath-mode "imath" "Imath mode for math formula input" t))
-#+end_src
-
-*** C/C++
+Block comment continuation on =RET=; banners, Doxygen skeletons and source files under =C-c l=.
 
 #+begin_src emacs-lisp
 (use-package c-ts-mode
   :straight nil
   :bind (:map c-ts-base-mode-map
               ("RET" . my/c-doc-newline)
+              ("C-c l d" . my/c-doc-insert)
               ("C-c l b" . my/c-doc-banner)
-              ("C-c l B" . my/c-doc-box-banner))
+              ("C-c l B" . my/c-doc-box-banner)
+              ("C-c l s" . my/c-create-src-file))
   :custom
   (c-ts-indent-offset 4)
   (c-ts-mode-enable-doxygen t)
   :init
-  (autoload 'my/c-doc-newline "my-c-doc" nil t)
-  (autoload 'my/c-doc-banner "my-c-doc" nil t)
-  (autoload 'my/c-doc-box-banner "my-c-doc" nil t)
-  (with-eval-after-load 'cc-mode
-    (keymap-set c-mode-map "C-c l b" #'my/c-doc-banner)
-    (keymap-set c++-mode-map "C-c l b" #'my/c-doc-banner)
-    (keymap-set c-mode-map "C-c l B" #'my/c-doc-box-banner)
-    (keymap-set c++-mode-map "C-c l B" #'my/c-doc-box-banner))
-  (autoload 'my/c-doc-fill-paragraph "my-c-doc" nil t)
+  (dolist (command '(my/c-doc-newline my/c-doc-insert my/c-doc-banner
+                     my/c-doc-box-banner my/c-create-src-file))
+    (autoload command "my-c" nil t))
   (add-to-list 'treesit-language-source-alist
                '(cpp . ("https://github.com/tree-sitter/tree-sitter-cpp")))
-
-  ;; Remap the standard C/C++ modes
   (add-to-list 'major-mode-remap-alist '(c-mode . c-ts-mode))
   (add-to-list 'major-mode-remap-alist '(c++-mode . c++-ts-mode))
   (add-to-list 'major-mode-remap-alist '(c-or-c++-mode . c-or-c++-ts-mode))
   :hook
   (c-ts-base-mode . (lambda ()
-                     (setq-local fill-column 80
-                                 fill-paragraph-function #'my/c-doc-fill-paragraph)))
-  ;; LSP
-  ((c++-ts-mode c-ts-mode) . eglot-ensure)
-
-  ;; Treesit
-  ((c++-ts-mode c-ts-mode) . my/enable-treesit-extras))
+                      (setq-local fill-column 80
+                                  tab-width 4
+                                  tab-always-indent nil
+                                  indent-region-function #'treesit-indent-region)))
+  (c-ts-base-mode . eglot-ensure))
 
 (my/prettify-set c-ts-base-mode
   ("size_t"   natural)
@@ -758,12 +677,18 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
   ("std::string"             string))
 #+end_src
 
-*** Haskell
+** Haskell
 
 #+begin_src emacs-lisp
 (use-package haskell-mode
+  :hook (haskell-mode . my/haskell-prettify-setup)
+  :init
+  (autoload 'my/haskell-prettify-setup "my-haskell")
+  (autoload 'my/haskell-hoogle "my-haskell")
   :config
-  (require 'my-haskell-workflow))
+  (require 'my-haskell)
+  (add-to-list 'my/popup-process-modes 'haskell-interactive-mode)
+  (add-to-list 'my/popup-repl-functions '(haskell-mode . my/haskell-repl-buffer)))
 
 (use-package consult-hoogle
   :straight `(:host nil
@@ -771,7 +696,6 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
                     :files (:defaults "*.el"))
   :commands consult-hoogle)
 
-(add-hook 'haskell-mode-hook #'my/haskell-prettify-setup)
 (my/prettify-set haskell-mode
   ("."      composition)
   ("->"     arrow)
@@ -782,7 +706,7 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
   ("Bool"   boolean))
 #+end_src
 
-*** Lean 4
+** Lean 4
 
 #+begin_src emacs-lisp
 (use-package nael
@@ -792,29 +716,53 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
   (nael-mode . eglot-ensure))
 #+end_src
 
-*** Common Lisp
+** Common Lisp
 
 #+begin_src emacs-lisp
 (use-package sly
   :commands sly
   :custom
   (inferior-lisp-program "/usr/bin/sbcl")
-  (sly-lisp-implementations '((sbcl ("/usr/bin/sbcl" "--dynamic-space-size" "6Gb")))))
+  (sly-lisp-implementations '((sbcl ("/usr/bin/sbcl" "--dynamic-space-size" "6Gb"))))
+  :config
+  (add-to-list 'my/popup-process-modes 'sly-mrepl-mode)
+  (add-to-list 'my/popup-repl-functions
+               (cons 'lisp-mode (lambda ()
+                                  (when (sly-current-connection)
+                                    (require 'sly-mrepl)
+                                    (sly-mrepl))))))
 #+end_src
 
-*** Python
+** Python
 
 #+begin_src emacs-lisp
 (use-package pyvenv
   :commands (pyvenv-activate pyvenv-deactivate pyvenv-workon))
+
+(add-to-list 'my/popup-repl-functions
+             (cons 'python-base-mode
+                   (lambda ()
+                     (when-let* ((process (python-shell-get-process)))
+                       (process-buffer process)))))
 #+end_src
 
-* Org and knowledge work
-
-** Package source and extensions
+** Maxima
 
 #+begin_src emacs-lisp
-;; The tecosaur fork supplies the live LaTeX preview API used below.
+(use-package maxima
+  :config
+  (add-to-list 'load-path "/usr/share/emacs/site-lisp/maxima/")
+  (autoload 'imaxima "imaxima" "Frontend for maxima with Image support" t)
+  (autoload 'imath-mode "imath" "Imath mode for math formula input" t))
+#+end_src
+
+* Org
+
+** Package
+
+The tecosaur fork supplies the live LaTeX preview API; Emacs's bundled Org does not yet.
+
+#+begin_src emacs-lisp
 (use-package org
   :demand t
   :straight `(org
@@ -846,34 +794,219 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
   :after org)
 (use-package org-eldoc
   :after org)
-#+end_src
 
-** Files and navigation
-
-#+begin_src emacs-lisp
 (setopt org-default-notes-file (expand-file-name "notes.org" org-directory)
         org-startup-folded 'fold)
-
 (setf (alist-get 'file org-link-frame-setup) 'find-file)
-(with-eval-after-load 'ox-html
-  (setq org-html-prefer-user-labels t))
 #+end_src
 
-** Tasks, agenda, and capture
+** Writing
 
-*** Agenda and task states
+*** Editing commands
 
 #+begin_src emacs-lisp
-(require 'my-org-workflow)
-(setopt my/notes-directory (file-truename "~/org/roam/"))
-;; Agenda discovery must not render every note's LaTeX previews.
+(setopt org-special-ctrl-a/e t
+        org-insert-heading-respect-content t
+        org-adapt-indentation t)
+
+(require 'my-org-editing)
+(keymap-unset org-mode-map "C-j")
+(keymap-set org-mode-map "C-<return>" #'my/org-insert-item-below)
+(keymap-set org-mode-map "C-S-<return>" #'my/org-insert-item-above)
+(keymap-set org-mode-map "M-q" #'my/org-reflow-paragraph)
+#+end_src
+
+*** Display
+
+Variable pitch, images that follow zoom, folded diagram and proof blocks (=#+ATTR_ORG: :fold yes/no=).
+
+#+begin_src emacs-lisp
+(setopt org-hide-leading-stars t
+        org-align-tags nil
+        org-tags-column 0
+        org-hide-emphasis-markers t
+        org-ellipsis "…"
+        org-pretty-entities t
+        org-pretty-entities-include-sub-superscripts nil
+        org-eldoc-breadcrumb-separator "→")
+
+(require 'my-org-display)
+(add-hook 'org-mode-hook #'variable-pitch-mode)
+(add-hook 'org-mode-hook #'visual-wrap-prefix-mode)
+(add-hook 'org-mode-hook #'my/org-typography)
+(add-hook 'org-mode-hook #'my/org-defer-note-folding)
+(advice-add 'org--create-inline-image :filter-return #'my/org-inline-image)
+
+(set-face-attribute 'org-table nil :inherit 'fixed-pitch)
+(set-face-attribute 'org-block nil            :foreground nil :inherit 'fixed-pitch :height 0.85)
+(set-face-attribute 'org-block-begin-line nil :inherit 'fixed-pitch)
+(set-face-attribute 'org-code nil             :inherit '(shadow fixed-pitch) :height 0.85)
+(set-face-attribute 'org-verbatim nil         :inherit '(shadow fixed-pitch) :height 0.85)
+(set-face-attribute 'org-special-keyword nil  :inherit '(font-lock-comment-face fixed-pitch))
+(set-face-attribute 'org-meta-line nil        :inherit '(font-lock-comment-face fixed-pitch))
+(set-face-attribute 'org-checkbox nil         :inherit 'fixed-pitch)
+(set-face-attribute 'org-drawer nil :height 0.7)
+(set-face-attribute 'org-document-title nil :family my/font-family-variable :weight 'bold :height 1.45)
+(set-face-attribute 'org-link nil :foreground "#3f647e" :underline t)
+(dolist (face '((org-level-1 . 1.2) (org-level-2 . 1.12) (org-level-3 . 1.05)
+                (org-level-4 . 1.0) (org-level-5 . 1.0) (org-level-6 . 1.0)
+                (org-level-7 . 1.0) (org-level-8 . 1.0)))
+  (set-face-attribute (car face) nil :family my/font-family-variable :weight 'bold :height (cdr face)))
+
+(use-package org-modern
+  :after org
+  :custom
+  (org-modern-hide-stars nil)
+  (org-modern-table t)
+  (org-modern-todo-faces org-todo-keyword-faces)
+  :hook
+  (org-mode . org-modern-mode)
+  (org-agenda-finalize . org-modern-agenda)
+  :config
+  (set-face-attribute 'org-modern-block-name nil :slant 'italic))
+#+end_src
+
+*** Links and images
+
+Images follow text zoom; width attributes set their base size.
+
+#+begin_src emacs-lisp
+;; Scanner locations use text searches within their owning note.
+(setopt org-link-search-must-match-exact-headline nil)
+(setopt org-display-remote-inline-images 'cache
+        org-image-actual-width '(600)
+        org-image-align 'center
+        org-startup-with-link-previews t
+        org-safe-remote-resources '("\\`https://fniessen\\.github\\.io\\(?:/\\|\\'\\)"))
+#+end_src
+
+*** LaTeX
+
+#+begin_src emacs-lisp
+(use-package auctex)
+(use-package tex
+  :straight nil
+  :custom
+  (TeX-view-program-selection '(((output-dvi has-no-display-manager) "dvi2tty")
+                                ((output-dvi style-pstricks) "dvips and gv")
+                                (output-dvi "xdvi") (output-pdf "PDF Tools") (output-html "xdg-open"))))
+(use-package cdlatex
+  :hook (org-mode . org-cdlatex-mode)
+  :custom (cdlatex-auto-help-delay 0.75))
+
+(setopt org-startup-with-latex-preview t
+        org-latex-preview-cache 'temp
+        org-highlight-latex-and-related '(latex script entities))
+(add-hook 'org-mode-hook #'org-latex-preview-mode)
+#+end_src
+
+*** Source blocks and Babel
+
+=C-c C-, p= inserts a proof and =e= a Beispiel; PDF export needs amsthm for proofs.
+
+#+begin_src emacs-lisp
+(add-to-list 'org-structure-template-alist '("p" . "proof"))
+(setf (alist-get "e" org-structure-template-alist nil nil #'equal) "beispiel")
+(setopt org-src-fontify-natively t
+        org-src-tab-acts-natively t
+        org-edit-src-content-indentation 0)
+
+(use-package d2-mode
+  ;; Load first: ob-d2 must replace the backend bundled with d2-mode.
+  :demand t
+  :mode "\\.d2\\'"
+  :init
+  (setenv "D2_PAD" "10")
+  (setenv "D2_LAYOUT" "elk")
+  (setenv "D2_THEME" "1"))
+
+(use-package ob-d2
+  :after (org d2-mode)
+  :demand t
+  :config
+  (add-to-list 'org-babel-default-header-args:d2 '(:eval . "never-export")))
+
+(setq org-confirm-babel-evaluate nil)
+(setq org-plantuml-jar-path "/usr/share/java/plantuml/plantuml.jar")
+(org-babel-do-load-languages
+ 'org-babel-load-languages
+ '((awk . t) (latex . t) (d2 . t) (dot . t) (plantuml . t) (shell . t)
+   (haskell . t) (C . t) (emacs-lisp . t) (gnuplot . t)))
+(add-hook 'org-babel-after-execute-hook #'org-redisplay-inline-images)
+#+end_src
+
+*** Export
+
+#+begin_src emacs-lisp
+(setopt org-export-backends '(ascii beamer html icalendar latex man odt)
+        org-latex-packages-alist nil)
+(with-eval-after-load 'ox-html
+  (setq org-html-prefer-user-labels t))
+(add-hook 'org-export-filter-options-functions #'my/org-beispiel-export-options)
+#+end_src
+
+** Tasks and projects
+
+TODO headings live anywhere: project READMEs, notes, the inbox. =my-tasks= discovers and captures them.
+
+*** Task states
+
+#+begin_src emacs-lisp
+(use-package my-tasks
+  :straight nil
+  :demand t
+  :config
+  (setopt my/notes-directory (file-truename "~/org/roam/")
+          my/task-legacy-files '("~/org/todos.org" "~/org/questions.org" "~/org/ideas.org" "~/org/notes.org")))
+
+(setq org-todo-keywords
+      '((sequence
+         "TODO(t)"
+         "NEXT(n)"
+         "WAIT(w@/!)"
+         "HOLD(h@/!/)"
+         "IDEA(i)"
+         "DISSOLVE(e)"
+         "|"
+         "DONE(d!)"
+         "KILL(k@/!)")))
+
+(setopt org-todo-keyword-faces
+        '(("NEXT" . (:inherit success :weight bold))
+          ("WAIT" . (:inherit warning))
+          ("HOLD" . (:inherit shadow))
+          ("IDEA" . (:inherit shadow))
+          ("DISSOLVE" . (:inherit shadow))
+          ("KILL" . (:inherit shadow))))
+#+end_src
+
+*** Agenda
+
+Agenda files come from the note index. Tags are note groups, so the agenda hides them.
+
+#+begin_src emacs-lisp
 (setopt org-agenda-inhibit-startup t
         org-agenda-include-diary t
         diary-file "~/org/diary"
-        org-agenda-tags-column 0)
+        org-agenda-tags-column 0
+        org-agenda-hide-tags-regexp "."
+        org-agenda-block-separator "────────────────────────"
+        org-agenda-prefix-format
+        '((agenda . " %-16:c%?-12t% s")
+          (todo . " %-16:c")
+          (tags . " %-16:c")
+          (search . " %-16:c"))
+        org-agenda-remove-times-when-in-prefix t)
 (advice-add 'org-agenda :before #'my/task-refresh-agenda)
-(advice-add 'org-agenda-prepare-buffers :around #'my/task-prepare-agenda-buffers)
+(add-hook 'org-agenda-mode-hook #'my/task-agenda-appearance)
 (keymap-global-set "C-c a" #'org-agenda)
+
+;; Override specs are not written back to custom.el, unlike `custom-set-faces'.
+(dolist (face '((org-agenda-structure (:inherit font-lock-function-name-face :weight bold :height 1.1))
+                (org-agenda-date (:inherit font-lock-comment-face :weight bold))
+                (org-agenda-date-today (:inherit org-agenda-date :foreground unspecified :weight bold :underline t))
+                (org-agenda-done (:inherit shadow))))
+  (face-spec-set (car face) `((t ,(cadr face))) 'face-override-spec))
 
 (org-add-agenda-custom-command
  '("o" "Overview: week and all open tasks"
@@ -907,66 +1040,48 @@ EWW uses a compact reading layout; =R= toggles its built-in reader view.
     (org-agenda-sorting-strategy '(category-keep priority-down))
     (org-agenda-buffer-name "*Task Review*"))))
 
-(setq my/task-project-agenda-blocks
-      '((agenda "" ((org-agenda-span 7)))
-        (todo "NEXT" ((org-agenda-overriding-header "Next actions")))
-        (todo "TODO" ((org-agenda-overriding-header "Backlog")))
-        (todo "WAIT" ((org-agenda-overriding-header "Waiting")))
-        (todo "HOLD|IDEA|DISSOLVE" ((org-agenda-overriding-header "Deferred")))))
 (org-add-agenda-custom-command
  '("p" "Project: week, next actions, and backlog" my/project-task-agenda ""))
 
 (org-add-agenda-custom-command
- '("s" "Reading queue" tags-todo "reading"))
-
-(add-hook 'org-agenda-mode-hook #'my/task-agenda-appearance)
-(setopt org-agenda-block-separator "────────────────────────"
-        org-agenda-prefix-format
-        '((agenda . " %-16:c%?-12t% s")
-          (todo . " %-16:c")
-          (tags . " %-16:c")
-          (search . " %-16:c"))
-        org-agenda-remove-times-when-in-prefix t)
-(custom-set-faces
- '(org-agenda-structure ((t (:inherit font-lock-function-name-face :weight bold :height 1.1))))
- '(org-agenda-date ((t (:inherit font-lock-comment-face :weight bold))))
- '(org-agenda-date-today ((t (:inherit org-agenda-date :foreground unspecified :weight bold :underline t))))
- '(org-agenda-done ((t (:inherit shadow)))))
-
-(setq org-todo-keywords
-      '((sequence
-         "TODO(t)"
-         "NEXT(n)"
-         "WAIT(w@/!)"
-         "HOLD(h@/!/)"
-         "IDEA(i)"
-         "DISSOLVE(e)"
-         "|"
-         "DONE(d!)"
-         "KILL(k@/!)")))
-
-(setopt org-todo-keyword-faces
-        '(("NEXT" . (:inherit success :weight bold))
-          ("WAIT" . (:inherit warning))
-          ("HOLD" . (:inherit shadow))
-          ("IDEA" . (:inherit shadow))
-          ("DISSOLVE" . (:inherit shadow))
-          ("KILL" . (:inherit shadow))))
+ '("s" "Reading queue" tags-todo "reading"
+   ((org-agenda-sorting-strategy '(todo-state-down)))))
 #+end_src
 
-*** Capture templates
+*** Capture
+
+=C-c c t= files a task in context (project, note, inbox); =s= queues a copied URL; =q/r= file a quote or thought into the source being read.
 
 #+begin_src emacs-lisp
-(require 'my-org-capture)
-(require 'org-protocol)
-(setq org-capture-templates my/org-capture-templates)
-(setq org-capture-templates-contexts
-      '(("p" (my/task-project-context-p))))
+(setq org-capture-templates
+      '(("t" "Task in context: project, current note, or inbox" entry
+         (function my/task-context-target)
+         "* TODO %?\n%a\n%i\n" :empty-lines 1)
+        ("n" "Task in current or selected note" entry
+         (function my/task-note-target)
+         "* TODO %?\n%a\n%i\n" :empty-lines 1)
+        ("i" "Task in notes inbox" entry
+         (function my/task-inbox-target)
+         "* TODO %?\n%a\n%i\n" :empty-lines 1)
+        ("b" "Backlog idea or plan" entry
+         (file+headline "~/org/ideas.org" "Backlog")
+         "* %?\nAdded: %U\n%a\n%i\n" :empty-lines 1)
+        ("s" "Source to read" entry
+         (file my/reading-file)
+         "* TODO %^{Title} :reading:\n:PROPERTIES:\n:SOURCE: %(my/reading-url)\n:END:\nCaptured: %U\n\n%?\n"
+         :empty-lines 1)
+        ("q" "Quote from the source being read" plain
+         (function my/reading-note-target)
+         "#+begin_quote\n%(my/reading-selection)\n#+end_quote\n%a\n%?" :empty-lines 1)
+        ("r" "Thought about the source being read" plain
+         (function my/reading-note-target)
+         "%?\n%a" :empty-lines 1)))
+(keymap-global-set "C-c c" #'org-capture)
 #+end_src
 
-*** Project context and navigation
+*** Project navigation
 
-Project notes live in the repository's =README.org=; tasks are ordinary headings there.
+=C-x p n/t/a/C=: project note, its Tasks, project agenda, task capture.
 
 #+begin_src emacs-lisp
 (keymap-set project-prefix-map "n" #'my/project-note)
@@ -980,240 +1095,175 @@ Project notes live in the repository's =README.org=; tasks are ordinary headings
     (add-to-list 'project-switch-commands entry t)))
 #+end_src
 
-** Editing commands
+** Notes
+
+*** Note graph
+
+Nodes are files and ID headings, indexed by org-mem. Collections: =Tags= from native tags and =SCAN= scopes (=SCAN_TARGET: Tags("Definition")=), =Aliases= from =ALIASES=, =Dualismen= from =PAIR_TARGET= lists.
+=C-c n=: =f= find, =i= insert, =b/l= links, =t= tag, =g= content, =h= broken links, =r= reindex, =a= alias, =d= scope, =T= capture, =C= id, =I= inspect, =q/Q= query view or pick a result. =M-.= jumps to definitions; =M-o n= toggles the backlink pane.
 
 #+begin_src emacs-lisp
-(setopt org-special-ctrl-a/e t
-        org-insert-heading-respect-content t
-        org-adapt-indentation t)
-
-(require 'my-org-editing)
-(keymap-unset org-mode-map "C-j")
-(keymap-set org-mode-map "C-<return>" #'my/org-insert-item-below)
-(keymap-set org-mode-map "C-S-<return>" #'my/org-insert-item-above)
-(keymap-set org-mode-map "M-q" #'my/org-reflow-paragraph)
-
-#+end_src
-
-** Appearance
-
-*** Document display
-
-#+begin_src emacs-lisp
-(setopt org-hide-leading-stars t
-        org-align-tags nil
-        org-tags-column 0
-        org-hide-emphasis-markers t
-        org-ellipsis "…"
-        org-pretty-entities t
-        org-pretty-entities-include-sub-superscripts nil
-        org-eldoc-breadcrumb-separator "→")
-#+end_src
-
-*** Fonts and faces
-
-#+begin_src emacs-lisp
-(add-hook 'org-mode-hook #'variable-pitch-mode)
-(add-hook 'org-mode-hook #'my/org-typography)
-(add-hook 'org-mode-hook #'visual-wrap-prefix-mode)
-
-(set-face-attribute 'org-table nil :inherit 'fixed-pitch)
-(set-face-attribute 'org-block nil            :foreground nil :inherit
-                    'fixed-pitch :height 0.85)
-(set-face-attribute 'org-block-begin-line nil :inherit 'fixed-pitch)
-(set-face-attribute 'org-code nil             :inherit '(shadow fixed-pitch) :height 0.85)
-(set-face-attribute 'org-verbatim nil         :inherit '(shadow fixed-pitch) :height 0.85)
-(set-face-attribute 'org-special-keyword nil  :inherit '(font-lock-comment-face
-                                                         fixed-pitch))
-(set-face-attribute 'org-meta-line nil        :inherit '(font-lock-comment-face fixed-pitch))
-(set-face-attribute 'org-checkbox nil         :inherit 'fixed-pitch)
-
-(dolist (face '((org-level-1 . 1.2)
-                (org-level-2 . 1.12)
-                (org-level-3 . 1.05)
-                (org-level-4 . 1.0)
-                (org-level-5 . 1.0)
-                (org-level-6 . 1.0)
-                (org-level-7 . 1.0)
-                (org-level-8 . 1.0)))
-  (set-face-attribute (car face) nil :family my/font-family-variable :weight 'bold :height (cdr face)))
-
-(set-face-attribute 'org-drawer nil :height 0.7)
-(set-face-attribute 'org-document-title nil :family my/font-family-variable :weight
-                    'bold :height 1.45)
-(set-face-attribute 'org-link nil :foreground "#3f647e" :underline t)
-
-#+end_src
-
-*** Org Modern
-
-#+begin_src emacs-lisp
-(use-package org-modern
-  :after org
+(use-package org-mem
   :custom
-  (org-modern-hide-stars nil)
-  (org-modern-table t)
-  (org-modern-todo-faces org-todo-keyword-faces)
-  :hook
-  (org-mode . org-modern-mode)
-  (org-agenda-finalize . org-modern-agenda)
+  (org-mem-watch-dirs (list my/notes-directory))
+  (org-mem-do-cache-text t)
+  (org-mem-do-warn-title-collisions nil)
   :config
-  (set-face-attribute 'org-modern-block-name nil :slant 'italic))
-#+end_src
+  (add-to-list 'org-mem-exclude (file-truename user-emacs-directory)))
 
-** Links and images
-
-Inline images follow text zoom; width attributes specify their base size.
-Keep images in a separate paragraph for centering.
-
-#+begin_src emacs-lisp
-;; Scanner locations use text searches within their owning note.
-(setopt org-link-search-must-match-exact-headline nil)
-(setopt org-display-remote-inline-images 'cache
-        org-image-actual-width '(600)
-        org-image-align 'center
-        org-startup-with-link-previews t
-        org-safe-remote-resources '("\\`https://fniessen\\.github\\.io\\(?:/\\|\\'\\)" ))
-(advice-add 'org--create-inline-image :filter-return #'my/org-inline-image)
-#+end_src
-
-** LaTeX
-
-*** Editing and PDF viewing
-
-#+begin_src emacs-lisp
-(use-package auctex)
-(use-package tex
-  :straight nil
-  :custom
-  (TeX-view-program-selection '(((output-dvi has-no-display-manager) "dvi2tty") ((output-dvi style-pstricks) "dvips and gv") (output-dvi "xdvi") (output-pdf "PDF Tools") (output-html "xdg-open"))))
-(use-package cdlatex
-  :hook
-  (org-mode . org-cdlatex-mode)
-  :custom
-  (cdlatex-auto-help-delay 0.75))
-#+end_src
-
-*** Inline previews
-
-**** Code comments
-
-#+begin_src emacs-lisp
-(require 'my-latex-preview)
-
-(use-package preview-auto
-  :straight (:host github :repo "ultronozm/preview-auto.el")
-  :commands preview-auto-mode
-  :hook (prog-mode . my/latex-comment-preview-auto-enable)
-  :custom (preview-auto-interval 0.3))
-#+end_src
-
-**** Org fragments
-
-#+begin_src emacs-lisp
-(setopt org-startup-with-latex-preview t
-        org-latex-preview-cache 'temp
-        org-highlight-latex-and-related '(latex script entities))
-
-(add-hook 'org-mode-hook #'org-latex-preview-mode)
-#+end_src
-
-*** Export
-
-#+begin_src emacs-lisp
-(setopt org-export-backends '(ascii beamer html icalendar latex man odt)
-        org-latex-packages-alist nil)
-(add-hook 'org-export-filter-options-functions #'my/org-beispiel-export-options)
-#+end_src
-
-** Source blocks
-
-*** Diagrams and short proofs
-
-#+begin_src emacs-lisp
-;; Fold diagrams, proofs and examples; #+ATTR_ORG: :fold yes/no overrides a block.
-(add-hook 'org-mode-hook #'my/org-defer-note-folding)
-
-;; C-c C-, p inserts a proof; PDF export needs amsthm in the note.
-(add-to-list 'org-structure-template-alist '("p" . "proof"))
-(setf (alist-get "e" org-structure-template-alist nil nil #'equal) "beispiel")
-#+end_src
-
-*** Editing
-
-#+begin_src emacs-lisp
-(setopt org-src-fontify-natively t
-        org-src-tab-acts-natively t
-        org-edit-src-content-indentation 0)
-#+end_src
-
-*** Babel execution
-
-#+begin_src emacs-lisp
-(use-package d2-mode
-  ;; Load first: ob-d2 must replace the backend bundled with d2-mode.
-  :demand t
-  :mode "\\.d2\\'"
-  :init
-  (setenv "D2_PAD" "10")
-  (setenv "D2_LAYOUT" "elk")
-  (setenv "D2_THEME" "1"))
-
-(use-package ob-d2
-  :after (org d2-mode)
-  :demand t
-  :config
-  (add-to-list 'org-babel-default-header-args:d2 '(:eval . "never-export")))
-
-
-(setq org-confirm-babel-evaluate nil)
-(setq org-plantuml-jar-path "/usr/share/java/plantuml/plantuml.jar")
-(org-babel-do-load-languages
- 'org-babel-load-languages
- '((awk . t) (latex . t) (d2 . t) (dot . t) (plantuml . t) (shell . t)
-   (haskell . t) (C . t) (emacs-lisp . t) (gnuplot . t)))
-(add-hook 'org-babel-after-execute-hook #'org-redisplay-inline-images)
-#+end_src
-
-** Note database
-
-#+begin_src emacs-lisp
-(use-package org-note-db
+(use-package org-note-graph
   :straight (:host github :repo "TheRobotFox/org-note-graph"
              :local-repo "~/projects/org-note-graph"
-             :files (:defaults "extensions/*.el"))
-  :after org
+             :files ("org-note-graph*.el"))
+  :after (org org-mem)
   :demand t
   :custom
-  (org-note-db-roots (list my/notes-directory))
-  (org-note-db-capture-directory my/notes-directory)
-  (org-note-db-alias-sources '("Aliases"))
-  (org-note-db-display-function #'my/popup-select)
-  (org-note-db-open-function #'my/popup-open-source)
+  (org-note-graph-capture-directory my/notes-directory)
+  (org-note-graph-display-function #'my/popup-select)
+  (org-note-graph-open-function #'my/popup-open-source)
+  (org-note-graph-read-function #'org-note-graph-consult-read)
+  (org-note-graph-alias-sources '(("Aliases")))
+  (org-note-graph-xref-sources '(("Tags" :tag "Definition")))
   :config
-  (require 'my-org-note-db)
-  (setq my/org-note-db-projects-node "id:b117e06d-421d-43d0-9ab6-f70ba8a076b4")
-  (add-hook 'my/project-note-hook #'my/org-note-db-collect-project)
-  (setq org-note-db-read-function #'my/org-note-db-read)
-  (keymap-global-set "C-c n" my/org-note-db-map))
-#+end_src
+  (require 'org-note-graph-tags)
+  (require 'org-note-graph-text)
+  (require 'org-note-graph-keywords)
+  (require 'org-note-graph-pairs)
+  (require 'org-note-graph-xref)
+  (require 'org-note-graph-discovery)
+  (require 'org-note-graph-query)
+  (org-note-graph-define-collection "Tags" :args '(:tag) :requires '(:tag :name)
+                                    :doc "Notes, headings and spans grouped by a tag.")
+  (org-note-graph-add-provider 'tags (org-note-graph-tags-provider "Tags"))
+  (org-note-graph-define-collection "Aliases" :requires '(:name)
+                                    :doc "Alternative names of notes.")
+  (org-note-graph-define-collection "Dualismen" :requires '(:source :target)
+                                    :doc "Dual concepts, read in both directions.")
+  (org-note-graph-add-provider 'aliases
+   (org-note-graph-property-scanner #'org-note-graph-keywords "ALIASES" nil "Aliases"))
+  (org-note-graph-add-provider 'dualismen-mirror (org-note-graph-mirror "Dualismen"))
+  ;; Project notes: their directories join the index through org-id's extra files.
+  (setq org-id-extra-files
+        (seq-filter #'file-exists-p
+                    (mapcar #'my/project-note-path (project-known-project-roots))))
+  (add-hook 'my/project-note-hook
+            (lambda () (add-to-list 'org-id-extra-files buffer-file-name)))
+  (org-mem-updater-mode 1)
+  (setq my/task-files-function (lambda () (org-note-graph-ensure) (org-note-graph-task-files)))
+  (setq my/task-note-locator (lambda () (org-note-graph-goto (org-note-graph-read "Task in note: "))))
+  (add-to-list 'my/popup-documentation-modes 'org-note-graph-view-mode)
+  (add-to-list 'my/popup-documentation-names "\\`\\*Notes: ")
+  (setq my/popup-root-function #'my/task-project-root))
 
-*** File preview appearance
+(defun my/notes-alias-add (&optional remove)
+  "Add an alias to the note at point; with a prefix, REMOVE one."
+  (interactive "P")
+  (org-note-graph-keywords-edit "ALIASES" "Aliases" remove))
 
-#+begin_src emacs-lisp
+(defun my/notes-toggle-backlinks ()
+  "Toggle the backlink pane of the note in the editing window."
+  (interactive)
+  (my/popup-toggle
+   (lambda (buffer) (string-prefix-p "*Notes: ← " (buffer-name buffer)))
+   #'org-note-graph-backlinks))
+(keymap-set my/popup-command-map "n" #'my/notes-toggle-backlinks)
+
+(defvar-keymap my/notes-map
+  "f" #'org-note-graph-find
+  "i" #'org-note-graph-insert-link
+  "b" #'org-note-graph-backlinks
+  "l" #'org-note-graph-forward-links
+  "t" #'org-note-graph-query-tag
+  "g" #'org-note-graph-search-content
+  "h" #'org-note-graph-unresolved
+  "r" #'org-note-graph-refresh
+  "a" #'my/notes-alias-add
+  "d" #'org-note-graph-text-setup
+  "T" #'org-note-graph-capture
+  "C" #'org-id-get-create
+  "I" #'org-note-graph-inspect
+  "q" #'org-note-graph-query
+  "Q" #'org-note-graph-query-find)
+(keymap-global-set "C-c n" my/notes-map)
+
 (with-eval-after-load 'consult
   (dolist (hook '(org-modern-mode olivetti-mode variable-pitch-mode
                   my/org-typography visual-wrap-prefix-mode))
     (add-to-list 'consult-preview-allowed-hooks hook)))
 #+end_src
 
-** Anki
+*** Sources and reading
+
+Citar for bibliography and citations, Org-ref for imports; =my-sources= runs the reading queue and
+source notes, created at the first captured thought (=C-c c q/r=) or with =C-u C-c r s=.
+=C-c r=: =a= queue a URL or paper, =s= start reading, =f= finish with a verdict, =q= the queue.
+Notes map: =B= browse, =S= notes, =A= associate, =D/X= import, =N= annotate.
+
+#+begin_src emacs-lisp
+(use-package citar
+  :demand t
+  :config
+  (require 'my-sources)
+  (setopt org-cite-global-bibliography (list my/source-bibliography)
+          citar-bibliography org-cite-global-bibliography
+          citar-library-paths (list (expand-file-name "papers/" org-directory))
+          citar-library-file-extensions '("pdf")
+          citar-notes-source 'org-note-graph
+          org-cite-insert-processor 'citar
+          org-cite-follow-processor 'citar
+          org-cite-activate-processor 'citar
+          org-cite-export-processors '((latex biblatex) (t basic)))
+  (add-to-list 'my/task-extra-files my/reading-file)
+  (org-note-graph-define-collection "Sources" :requires '(:name) :doc "Web and file sources of notes.")
+  (org-note-graph-add-provider 'sources
+   (org-note-graph-property-scanner #'org-note-graph-keywords "SOURCE" nil "Sources"))
+  (keymap-set my/notes-map "B" #'citar-open)
+  (keymap-set my/notes-map "S" #'citar-open-notes)
+  (keymap-set my/notes-map "A" #'my/source-associate)
+  (defvar-keymap my/reading-map
+    "a" #'my/reading-add
+    "s" #'my/reading-start
+    "f" #'my/reading-finish
+    "q" (lambda () (interactive) (org-agenda nil "s")))
+  (keymap-global-set "C-c r" my/reading-map))
+
+;; Org-ref's PDF downloader uses async without declaring the dependency.
+(use-package async :defer t)
+
+(use-package org-ref
+  :after citar
+  :demand t
+  :custom
+  (bibtex-completion-bibliography citar-bibliography)
+  (bibtex-completion-library-path citar-library-paths)
+  :config
+  (make-directory (car citar-library-paths) t)
+  (require 'org-ref-arxiv)
+  (keymap-set my/notes-map "D" #'doi-utils-add-bibtex-entry-from-doi)
+  (keymap-set my/notes-map "X" #'arxiv-get-pdf-add-bibtex-entry))
+
+(use-package citar-embark
+  :after (citar embark)
+  :config (citar-embark-mode 1))
+
+(use-package org-noter
+  :commands org-noter
+  :init (keymap-set my/notes-map "N" #'org-noter)
+  :custom
+  (org-noter-notes-search-path (list my/notes-directory))
+  (org-noter-supported-modes '(pdf-view-mode doc-view-mode))
+  (org-noter-prefer-root-as-file-level t)
+  (org-noter-always-create-frame nil)
+  (org-noter-kill-frame-at-session-end nil)
+  (org-noter-auto-save-last-location t))
+#+end_src
+
+*** Anki
 
 #+begin_src emacs-lisp
 (use-package org-anki
   :after org
-  :straight
-  (:host github :repo "TheRobotFox/org-anki"))
+  :straight (:host github :repo "TheRobotFox/org-anki"))
 #+end_src
 
 * Integrations
@@ -1275,16 +1325,12 @@ Inbox and Sent are fetched with mbsync; credentials live in =~/.config/isync/=.
 
 ** AI
 
-*** GPTel
-
 #+begin_src emacs-lisp
 (use-package gptel
-  :custom
-  (gptel-model 'gpt-6-astra)
+  :custom (gptel-model 'gpt-6-astra)
   :bind ("C-c g" . gptel)
   :bind* ("C-c RET" . gptel-send)
-  :config
-  (gptel-highlight-mode 1))
+  :config (gptel-highlight-mode 1))
 #+end_src
 
 ** PDF
@@ -1293,17 +1339,9 @@ Inbox and Sent are fetched with mbsync; credentials live in =~/.config/isync/=.
 (use-package pdf-tools
   :mode ("\\.pdf\\'" . pdf-view-mode)
   :config
-  (pdf-tools-install-noverify)
+  (pdf-tools-install t t)
   (keymap-set pdf-view-mode-map "C-s" #'isearch-forward)
   (keymap-set pdf-view-mode-map "C-r" #'isearch-backward))
-
-(use-package org-noter
-  :commands org-noter
-  :bind ("C-c n N" . org-noter)
-  :custom
-  (org-noter-supported-modes '(pdf-view-mode doc-view-mode))
-  (org-noter-always-create-frame nil)
-  (org-noter-auto-save-last-location t))
 #+end_src
 
 ** Matrix
