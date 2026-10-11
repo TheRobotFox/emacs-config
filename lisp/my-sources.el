@@ -20,6 +20,11 @@
 (declare-function eww "eww" (url &optional new-buffer buffer))
 (declare-function pdf-view-active-region-p "pdf-view")
 (declare-function pdf-view-active-region-text "pdf-view")
+(declare-function doi-utils-add-bibtex-entry-from-doi "doi-utils" (doi &optional bibfile))
+(declare-function org-ref-bibtex-key-from-doi "org-ref-pdf" (doi))
+(declare-function arxiv-get-pdf-add-bibtex-entry "org-ref-arxiv" (arxiv-number bibfile pdfdir))
+(declare-function bibtex-parse-entry "bibtex" (&optional content))
+(declare-function bibtex-beginning-of-entry "bibtex")
 (defvar eww-data)
 
 (defgroup my/sources nil "Reading queue and source notes." :group 'org)
@@ -41,10 +46,69 @@
   "Whether TEXT is a web URL."
   (and text (string-match-p "\\`https?://[^[:space:]]+\\'" text)))
 
-(defun my/reading-url ()
-  "Use a copied web URL, prompting when the clipboard holds other text."
-  (let ((text (string-trim (or (ignore-errors (current-kill 0)) ""))))
-    (if (my/source-url-p text) text (string-trim (read-string "Resource URL: ")))))
+(defun my/source--arxiv-id (text)
+  "Return the arXiv identifier in TEXT, or nil."
+  (let ((id "\\([a-z-]+\\(?:\\.[A-Z]\\{2\\}\\)?/[0-9]\\{5,7\\}\\|[0-9]\\{4\\}\\.[0-9]\\{4,5\\}\\(?:v[0-9]+\\)?\\)"))
+    (cond ((string-match (concat "\\`https?://arxiv\\.org/\\(?:abs\\|pdf\\|format\\)/" id) text) (match-string 1 text))
+          ((string-match (concat "\\`arxiv:" id "\\'") (downcase text)) (match-string 1 text))
+          ((string-match (concat "\\`" id "\\'") text) (match-string 1 text)))))
+
+(defun my/source--doi (text)
+  "Return the DOI in TEXT, or nil."
+  (let ((doi "\\(10\\.[0-9]\\{4,9\\}/[-._;()/:A-Za-z0-9]+\\)"))
+    (cond ((string-match (concat "\\`https?://\\(?:dx\\.\\)?doi\\.org/" doi "\\'") text) (match-string 1 text))
+          ((string-match (concat "\\`doi:" doi "\\'") text) (match-string 1 text))
+          ((string-match (concat "\\`" doi "\\'") text) (match-string 1 text)))))
+
+(defun my/source--last-key ()
+  "Return the key of the last entry in the bibliography."
+  (with-temp-buffer
+    (insert-file-contents my/source-bibliography)
+    (goto-char (point-max))
+    (bibtex-beginning-of-entry)
+    (cdr (assoc "=key=" (bibtex-parse-entry)))))
+
+(defun my/source--bibliography-has (text)
+  "Whether the bibliography mentions TEXT."
+  (with-temp-buffer
+    (insert-file-contents my/source-bibliography)
+    (search-forward text nil t)))
+
+(defvar bibtex-entry-format)
+
+(defun my/source-import (text)
+  "Resolve TEXT to a resource, importing a paper into the bibliography.
+An arXiv reference adds its entry and PDF; a DOI adds its entry and tries to
+fetch the PDF, which fails quietly behind paywalls; a URL stays a URL.
+Imported entries skip bibtex-mode's mandatory-field check, since publisher
+metadata is often incomplete; `my/source-new-entry' covers the rest by hand."
+  (require 'bibtex)
+  (let ((bibtex-entry-format (remq 'required-fields bibtex-entry-format)))
+    (cond
+     ((my/source--arxiv-id text)
+      (let ((id (my/source--arxiv-id text)))
+        (require 'org-ref-arxiv)
+        (unless (my/source--bibliography-has id)
+          (message "Importing arXiv:%s..." id)
+          (arxiv-get-pdf-add-bibtex-entry id my/source-bibliography (car citar-library-paths)))
+        (cons 'citekey (my/source--last-key))))
+     ((my/source--doi text)
+      (let ((doi (my/source--doi text)))
+        (require 'org-ref)
+        (require 'org-ref-pdf)
+        (message "Importing doi:%s..." doi)
+        (doi-utils-add-bibtex-entry-from-doi doi my/source-bibliography)
+        (cons 'citekey (or (org-ref-bibtex-key-from-doi doi) (user-error "Import of %s failed" doi)))))
+     ((my/source-url-p text) (cons 'url text)))))
+
+(defun my/source-new-entry ()
+  "Add a bibliography entry by hand: insert a template at the end of the file.
+Fill the fields, then C-c C-c cleans the entry and generates its key."
+  (interactive)
+  (find-file my/source-bibliography)
+  (goto-char (point-max))
+  (unless (bolp) (insert "\n"))
+  (call-interactively #'bibtex-entry))
 
 (defun my/source--file-citekey (file)
   "Return the citekey whose library files include FILE, or nil."
@@ -82,7 +146,7 @@ A page in EWW, a PDF, a queue item or agenda line, or a source note."
              (org-with-wide-buffer (goto-char (point-min)) (my/source-entry-resource))))))
 
 (defun my/source-resource-title (resource)
-  "Return a title for RESOURCE from the bibliography, the page or the file."
+  "Return a title for RESOURCE from the bibliography, the page, or by asking."
   (pcase resource
     (`(citekey . ,key) (my/source-title (citar-get-entry key)))
     (`(url . ,url) (or (and (derived-mode-p 'eww-mode) (org-string-nw-p (plist-get eww-data :title)))
@@ -217,22 +281,27 @@ A page in EWW, a PDF, a queue item or agenda line, or a source note."
          (save-excursion (org-back-to-heading t) (point-marker)))
         (t (my/reading--select-item))))
 
-(defun my/reading-add (&optional text)
-  "Queue a source to read: a copied URL, or a bibliography entry."
-  (interactive)
-  (let ((text (or text (string-trim (or (ignore-errors (current-kill 0)) "")))))
-    (if (my/source-url-p text)
-        (org-capture nil "s")
-      (let* ((key (citar-select-ref))
-             (entry (citar-get-entry key)))
-        (with-current-buffer (find-file-noselect my/reading-file)
-          (org-with-wide-buffer
-           (goto-char (point-max))
-           (unless (bolp) (insert "\n"))
-           (insert (format "* TODO %s :reading:\n:PROPERTIES:\n:CITEKEY: %s\n:END:\nCaptured: %s\n\n"
-                           (my/source-title entry) key (format-time-string (org-time-stamp-format t t))))
-           (save-buffer)))
-        (message "Queued %s" (my/source-title entry))))))
+(defun my/reading-capture-resource ()
+  "Resolve the queue capture's source once.
+The clipboard supplies a URL, DOI or arXiv reference; otherwise pick an entry."
+  (or (org-capture-get :note-source)
+      (let* ((text (string-trim (or (ignore-errors (current-kill 0)) "")))
+             (resource (or (condition-case err (my/source-import text)
+                             (error (user-error "Import failed: %s. Add the entry with C-c r b, then capture again"
+                                                (error-message-string err))))
+                           (cons 'citekey (citar-select-ref)))))
+        (org-capture-put :note-source resource)
+        resource)))
+
+(defun my/reading-capture-title ()
+  "Return the queue capture's title, for the template."
+  (my/source-resource-title (my/reading-capture-resource)))
+
+(defun my/reading-capture-properties ()
+  "Return the queue capture's property line, for the template."
+  (pcase (my/reading-capture-resource)
+    (`(citekey . ,key) (format ":CITEKEY: %s" key))
+    (`(,_ . ,value) (format ":SOURCE: %s" value))))
 
 (defun my/reading-start (&optional create-note)
   "Start reading the queue item at point: mark it NEXT and open its source.
@@ -270,6 +339,16 @@ The verdict goes into the source note, or onto the queue item without one."
           (insert "Verdict: " verdict "\n"))))
     (with-current-buffer (marker-buffer marker) (save-buffer))
     (message "Finished %s" (org-with-point-at marker (org-get-heading t t t t)))))
+
+;;;; Noter
+
+(defun my/source-noter-notes (document)
+  "Return the source note annotating DOCUMENT, for org-noter's notes lookup.
+Noter otherwise only considers notes named after the document."
+  (when-let* ((resource (if-let* ((key (my/source--file-citekey document))) (cons 'citekey key)
+                          (cons 'file (expand-file-name document))))
+              (node (my/source-note resource)))
+    (org-mem-entry-file node)))
 
 ;;;; Capture into the source note
 

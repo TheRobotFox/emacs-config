@@ -1050,7 +1050,7 @@ Agenda files come from the note index. Tags are note groups, so the agenda hides
 
 *** Capture
 
-=C-c c t= files a task in context (project, note, inbox); =s= queues a copied URL; =q/r= file a quote or thought into the source being read.
+=C-c c t= files a task in context (project, note, inbox); =s= queues a copied URL, DOI or arXiv reference (importing papers), else a bibliography entry; =q/r= file a quote or thought into the source being read.
 
 #+begin_src emacs-lisp
 (setq org-capture-templates
@@ -1066,9 +1066,9 @@ Agenda files come from the note index. Tags are note groups, so the agenda hides
         ("b" "Backlog idea or plan" entry
          (file+headline "~/org/ideas.org" "Backlog")
          "* %?\nAdded: %U\n%a\n%i\n" :empty-lines 1)
-        ("s" "Source to read" entry
+        ("s" "Source to read: copied URL, DOI or arXiv reference, else a paper" entry
          (file my/reading-file)
-         "* TODO %^{Title} :reading:\n:PROPERTIES:\n:SOURCE: %(my/reading-url)\n:END:\nCaptured: %U\n\n%?\n"
+         "* TODO %(my/reading-capture-title) :reading:\n:PROPERTIES:\n%(my/reading-capture-properties)\n:END:\nCaptured: %U\n\n%?\n"
          :empty-lines 1)
         ("q" "Quote from the source being read" plain
          (function my/reading-note-target)
@@ -1100,7 +1100,7 @@ Agenda files come from the note index. Tags are note groups, so the agenda hides
 *** Note graph
 
 Nodes are files and ID headings, indexed by org-mem. Collections: =Tags= from native tags and =SCAN= scopes (=SCAN_TARGET: Tags("Definition")=), =Aliases= from =ALIASES=, =Dualismen= from =PAIR_TARGET= lists.
-=C-c n=: =f= find, =i= insert, =b/l= links, =t= tag, =g= content, =h= broken links, =r= reindex, =a= alias, =d= scope, =T= capture, =C= id, =I= inspect, =q/Q= query view or pick a result. =M-.= jumps to definitions; =M-o n= toggles the backlink pane.
+=C-c n=: =f= find, =i= insert, =b/l= links, =t= add a tag (prefix removes), =g= content, =h= broken links, =r= reindex, =a= alias, =d= scope, =T= capture, =C= id, =I= inspect, =m= mark the word or region as a definition (=[[def:Term|alias][text]]=), =q/Q= query view or pick a result. =M-.= jumps to definitions; =M-o n= toggles the backlink pane.
 
 #+begin_src emacs-lisp
 (use-package org-mem
@@ -1123,12 +1123,13 @@ Nodes are files and ID headings, indexed by org-mem. Collections: =Tags= from na
   (org-note-graph-open-function #'my/popup-open-source)
   (org-note-graph-read-function #'org-note-graph-consult-read)
   (org-note-graph-alias-sources '(("Aliases")))
-  (org-note-graph-xref-sources '(("Tags" :tag "Definition")))
+  (org-note-graph-xref-sources '(("Definition")))
   :config
   (require 'org-note-graph-tags)
   (require 'org-note-graph-text)
   (require 'org-note-graph-keywords)
-  (require 'org-note-graph-pairs)
+  (require 'org-note-graph-relations)
+  (require 'org-note-graph-markers)
   (require 'org-note-graph-xref)
   (require 'org-note-graph-discovery)
   (require 'org-note-graph-query)
@@ -1137,11 +1138,20 @@ Nodes are files and ID headings, indexed by org-mem. Collections: =Tags= from na
   (org-note-graph-add-provider 'tags (org-note-graph-tags-provider "Tags"))
   (org-note-graph-define-collection "Aliases" :requires '(:name)
                                     :doc "Alternative names of notes.")
-  (org-note-graph-define-collection "Dualismen" :requires '(:source :target)
-                                    :doc "Dual concepts, read in both directions.")
   (org-note-graph-add-provider 'aliases
    (org-note-graph-property-scanner #'org-note-graph-keywords "ALIASES" nil "Aliases"))
-  (org-note-graph-add-provider 'dualismen-mirror (org-note-graph-mirror "Dualismen"))
+
+  (org-note-graph-define-collection "Definition" :requires '(:name)
+                                    :doc "Inline Definitionen")
+  (org-note-graph-add-provider 'definition-forward
+			       (org-note-graph-tag-forward "Tags" "Definition" "Definition"))
+  (org-note-graph-define-marker "def" :collection "Definition")
+  (org-note-graph-define-collection "dual" :requires '(:source :target)
+                                    :doc "Dual concepts, read in both directions.")
+  
+  (org-note-graph-define-collection "impl" :requires '(:source :target)
+                                    :doc "Generalisierung un Spezialisierung")
+
   ;; Project notes: their directories join the index through org-id's extra files.
   (setq org-id-extra-files
         (seq-filter #'file-exists-p
@@ -1173,7 +1183,7 @@ Nodes are files and ID headings, indexed by org-mem. Collections: =Tags= from na
   "i" #'org-note-graph-insert-link
   "b" #'org-note-graph-backlinks
   "l" #'org-note-graph-forward-links
-  "t" #'org-note-graph-query-tag
+  "t" #'org-note-graph-add-tag
   "g" #'org-note-graph-search-content
   "h" #'org-note-graph-unresolved
   "r" #'org-note-graph-refresh
@@ -1182,8 +1192,9 @@ Nodes are files and ID headings, indexed by org-mem. Collections: =Tags= from na
   "T" #'org-note-graph-capture
   "C" #'org-id-get-create
   "I" #'org-note-graph-inspect
-  "q" #'org-note-graph-query
-  "Q" #'org-note-graph-query-find)
+  "m" #'org-note-graph-mark
+  "Q" #'org-note-graph-query
+  "q" #'org-note-graph-query-find)
 (keymap-global-set "C-c n" my/notes-map)
 
 (with-eval-after-load 'consult
@@ -1196,7 +1207,7 @@ Nodes are files and ID headings, indexed by org-mem. Collections: =Tags= from na
 
 Citar for bibliography and citations, Org-ref for imports; =my-sources= runs the reading queue and
 source notes, created at the first captured thought (=C-c c q/r=) or with =C-u C-c r s=.
-=C-c r=: =a= queue a URL or paper, =s= start reading, =f= finish with a verdict, =q= the queue.
+=C-c r=: =a= queue (same as =C-c c s=), =b= add a bibliography entry by hand, =s= start reading, =f= finish with a verdict, =q= the queue.
 Notes map: =B= browse, =S= notes, =A= associate, =D/X= import, =N= annotate.
 
 #+begin_src emacs-lisp
@@ -1221,7 +1232,8 @@ Notes map: =B= browse, =S= notes, =A= associate, =D/X= import, =N= annotate.
   (keymap-set my/notes-map "S" #'citar-open-notes)
   (keymap-set my/notes-map "A" #'my/source-associate)
   (defvar-keymap my/reading-map
-    "a" #'my/reading-add
+    "a" (lambda () (interactive) (org-capture nil "s"))
+    "b" #'my/source-new-entry
     "s" #'my/reading-start
     "f" #'my/reading-finish
     "q" (lambda () (interactive) (org-agenda nil "s")))
@@ -1249,6 +1261,7 @@ Notes map: =B= browse, =S= notes, =A= associate, =D/X= import, =N= annotate.
 (use-package org-noter
   :commands org-noter
   :init (keymap-set my/notes-map "N" #'org-noter)
+  :config (add-hook 'org-noter-find-additional-notes-functions #'my/source-noter-notes)
   :custom
   (org-noter-notes-search-path (list my/notes-directory))
   (org-noter-supported-modes '(pdf-view-mode doc-view-mode))
@@ -1338,6 +1351,9 @@ Inbox and Sent are fetched with mbsync; credentials live in =~/.config/isync/=.
 #+begin_src emacs-lisp
 (use-package pdf-tools
   :mode ("\\.pdf\\'" . pdf-view-mode)
+  :hook
+  ;; Precision scrolling re-renders the page on every pixel event; pdf-view scrolls itself.
+  (pdf-view-mode . (lambda () (setq-local pixel-scroll-precision-mode nil)))
   :config
   (pdf-tools-install t t)
   (keymap-set pdf-view-mode-map "C-s" #'isearch-forward)

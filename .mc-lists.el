@@ -13,6 +13,7 @@
 	end-of-visual-line
 	indent-for-tab-command
 	kill-region
+	kill-sentence
 	kill-visual-line
 	org-beginning-of-line
 	org-ctrl-c-ctrl-c
@@ -20,14 +21,22 @@
 	org-delete-char
 	org-end-of-line
 	org-force-self-insert
+	org-note-graph-mark
 	org-self-insert-command
+	org-yank
+	previous-error-no-select
 	sp-mark-sexp
 	sp-remove-active-pair-overlay
+	sp-unwrap-sexp
+	undefined
 	))
 
 (setq mc/cmds-to-run-once
       '(
+	compile-goto-error
 	pixel-scroll-precision
 	pixel-scroll-start-momentum
+	read-only-mode
 	toggle-input-method
+	wgrep-finish-edit
 	))
