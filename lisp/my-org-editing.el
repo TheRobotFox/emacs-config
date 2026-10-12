@@ -10,70 +10,52 @@
 (require 'org-list)
 (require 'ox)
 
+(defun my/org--insert-list-item (direction)
+  "Insert a sibling item in DIRECTION, carrying over the item's checkbox."
+  (org-beginning-of-item)
+  (let ((checkbox (org-list-get-checkbox (point) (org-list-struct)))
+        (empty (save-excursion (looking-at org-list-full-item-re)
+                               (goto-char (match-end 0))
+                               (looking-at-p "[ \t]*$"))))
+    (if (eq direction 'above)
+        (org-insert-item checkbox)
+      (end-of-line)
+      (if (not empty)
+          (org-insert-item checkbox)
+        ;; Point in an empty item reads as before its contents, which makes
+        ;; Org insert above; a placeholder character puts point after them.
+        (insert "x")
+        (let ((placeholder (1- (point))))
+          (org-insert-item checkbox)
+          (save-excursion (goto-char placeholder) (delete-char 1)))))))
+
+(defun my/org--insert-heading (direction)
+  "Insert a sibling heading in DIRECTION, carrying over an open TODO keyword.
+After a done heading, the new one starts with the first TODO keyword."
+  (let ((state (org-get-todo-state))
+        (stars (concat (make-string (or (org-current-level) 1) ?*) " ")))
+    ;; Inserting the stars directly avoids `org-insert-heading', whose
+    ;; whitespace rules depend on where point is.
+    (if (eq direction 'above)
+        (progn (org-back-to-heading t)
+               (insert stars)
+               (save-excursion (insert "\n")))
+      (end-of-line)
+      (org-end-of-subtree)
+      (insert "\n" stars))
+    (run-hooks 'org-insert-heading-hook)
+    (when state
+      (org-todo (if (member state org-done-keywords) (car org-not-done-keywords) state)))))
+
 (defun my/org--insert-item (direction)
-  "Insert a list item, table row or heading in DIRECTION (`above' or `below')."
-  (let ((context (org-element-lineage
-                  (org-element-context)
-                  '(table table-row headline inlinetask item plain-list)
-                  t)))
-    (pcase (org-element-type context)
-      ;; Add a new list item (carrying over checkboxes if necessary)
-      ((or `item `plain-list)
-       (let ((orig-point (point)))
-         ;; Position determines where org-insert-todo-heading and `org-insert-item'
-         ;; insert the new list item.
-         (if (eq direction 'above)
-             (org-beginning-of-item)
-           (end-of-line))
-         (let* ((ctx-item? (eq 'item (org-element-type context)))
-                (ctx-cb (org-element-property :contents-begin context))
-                ;; Edge case: point at the beginning of the first item.
-                (beginning-of-list? (and (not ctx-item?)
-                                         (= ctx-cb orig-point)))
-                (item-context (if beginning-of-list?
-                                  (org-element-context)
-                                context))
-                ;; Edge case: the bullet line is empty.
-                (ictx-cb (org-element-property :contents-begin item-context))
-                (empty? (and (eq direction 'below)
-                             (or (not ictx-cb)
-                                 (= ictx-cb
-                                    (1+ (point))))))
-                (pre-insert-point (point)))
-           ;; Insert dummy content so that `org-insert-item' inserts below.
-           (when empty?
-             (insert " "))
-           (org-insert-item (org-element-property :checkbox context))
-           (when empty?
-             (delete-region pre-insert-point (1+ pre-insert-point))))))
-      ;; Add a new table row
-      ((or `table `table-row)
-       (pcase direction
-         ('below (org-table-next-row))
-         ('above (org-table-insert-row))))
-
-      ;; Otherwise, add a new heading, carrying over any todo state.
-      (_
-       (let ((level (or (org-current-level) 1)))
-         ;; `org-insert-heading' applies whitespace rules that depend on the
-         ;; cursor position; inserting at a lower level is predictable.
-         (pcase direction
-           (`below
-            (let (org-insert-heading-respect-content)
-              (goto-char (line-end-position))
-              (org-end-of-subtree)
-              (insert "\n" (make-string level ?*) " ")))
-           (`above
-            (org-back-to-heading)
-            (insert (make-string level ?*) " ")
-            (save-excursion (insert "\n"))))
-         (run-hooks 'org-insert-heading-hook)
-         (when-let* ((todo-keyword (org-element-property :todo-keyword context))
-                     (todo-type    (org-element-property :todo-type context)))
-           (org-todo (unless (eq todo-type 'done) todo-keyword))))))
-
-    (when (org-invisible-p)
-      (org-fold-show-hidden-entry))))
+  "Insert a list item, table row or heading in DIRECTION, `above' or `below'."
+  (pcase (org-element-type (org-element-lineage (org-element-context)
+                                                '(table-row table item plain-list headline inlinetask)
+                                                t))
+    ((or 'item 'plain-list) (my/org--insert-list-item direction))
+    ((or 'table-row 'table) (org-table-insert-row (eq direction 'below)))
+    (_ (my/org--insert-heading direction)))
+  (when (org-invisible-p) (org-fold-show-hidden-entry)))
 
 (defun my/org-insert-item-below (count)
   "Insert COUNT new headings, table rows or items below the current one."

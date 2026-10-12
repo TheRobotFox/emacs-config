@@ -35,11 +35,10 @@
   (preview-auto-mode 1))
 
 (defun my/latex-comment-preview-auto-enable ()
-  "Start comment previews in files of programming modes other than TeX.
-Temporary buffers, such as those generating autoloads or fontifying Org
-source blocks, run mode hooks too and must not start previews."
-  (when (and buffer-file-name (not (derived-mode-p 'tex-mode)))
-    (my/latex-comment-preview-setup)))
+  "Start comment previews in file buffers, for mode hooks.
+Temporary buffers, such as those fontifying Org source blocks, run mode
+hooks too and must not start previews."
+  (when buffer-file-name (my/latex-comment-preview-setup)))
 
 (provide 'my-latex-preview)
 ;;; my-latex-preview.el ends here

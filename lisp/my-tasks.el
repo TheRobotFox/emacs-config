@@ -3,8 +3,9 @@
 ;;; Commentary:
 ;; Project notes live in the repository; tasks are ordinary Org headings there,
 ;; in personal notes, or in the notes inbox.  project.el supplies repository
-;; context and remembers agenda sources.  The agenda commands and capture
-;; templates that use these targets are configured in config.org.
+;; context and remembers agenda sources; the note graph finds the notes holding
+;; tasks.  The agenda commands and capture templates that use these targets are
+;; configured in config.org.
 
 ;;; Code:
 (require 'cl-lib)
@@ -16,29 +17,21 @@
 (require 'seq)
 (require 'subr-x)
 
+(declare-function org-note-graph-ensure "org-note-graph")
+(declare-function org-note-graph-task-files "org-note-graph")
+(declare-function org-note-graph-goto "org-note-graph" (entry))
+(declare-function org-note-graph-read "org-note-graph-ui" (prompt &optional nodes allow-new))
+
 (defgroup my/tasks nil "Personal project and task workflow." :group 'org)
 (defcustom my/project-note-file "README.org"
   "Org note relative to each project root, also containing its Tasks heading."
   :type 'string)
-(defcustom my/task-legacy-files nil
-  "Existing files included in the overview without moving their contents."
-  :type '(repeat file))
 (defcustom my/task-extra-files nil
   "Additional Org files to include in task views."
   :type '(repeat file))
 (defcustom my/notes-directory org-directory
   "Directory containing personal notes and the task inbox."
   :type 'directory)
-(defcustom my/task-files-function nil
-  "Function returning the note files that contain tasks.
-Nil scans the notes tree for every Org file."
-  :type '(choice (const nil) function))
-(defcustom my/task-note-locator nil
-  "Function selecting a note for task capture outside the notes tree.
-Called with no arguments in the capture context; it must set the current
-buffer and move point into the chosen note.  Nil restricts note capture to
-the originating note."
-  :type '(choice (const nil) function))
 (defcustom my/project-task-agenda-blocks
   '((agenda "" ((org-agenda-span 7)))
     (todo "NEXT" ((org-agenda-overriding-header "Next actions")))
@@ -64,22 +57,6 @@ the originating note."
   "Whether FILE belongs to the configured personal notes tree."
   (let ((file (or file buffer-file-name)))
     (and file (file-in-directory-p file my/notes-directory))))
-
-(defun my/task--note-files ()
-  "List personal Org files, including new files in unsaved buffers."
-  (delete-dups
-   (append
-    (when (file-directory-p my/notes-directory)
-      (seq-filter (lambda (file)
-                    (and (file-regular-p file)
-                         (not (string-prefix-p ".#" (file-name-nondirectory file)))))
-                  (directory-files-recursively my/notes-directory "\\.org\\'")))
-    (delq nil
-          (mapcar (lambda (buffer)
-                    (let ((file (buffer-file-name buffer)))
-                      (when (and file (string-suffix-p ".org" file)
-                                 (my/task--note-file-p file)) file)))
-                  (buffer-list))))))
 
 (defun my/task-project-root (&optional prompt)
   "Resolve current project context, optionally PROMPT for another project.
@@ -164,12 +141,11 @@ When NODE is non-nil, assign a file ID for stable links."
     (my/task--project-target root)))
 
 (defun my/task-note-target ()
-  "Capture under the originating note's heading, or in a located note."
+  "Capture under the originating note's heading, else in a picked note."
   (let ((origin (my/task--origin)))
-    (cond ((and origin (with-current-buffer origin (my/task--note-file-p)))
-           (set-buffer origin))
-          (my/task-note-locator (funcall my/task-note-locator))
-          (t (user-error "Not in a personal note")))
+    (if (and origin (with-current-buffer origin (my/task--note-file-p)))
+        (set-buffer origin)
+      (org-note-graph-goto (org-note-graph-read "Task in note: ")))
     (my/task--entry-heading)))
 
 (defun my/task-context-target ()
@@ -218,13 +194,12 @@ When NODE is non-nil, assign a file ID for stable links."
   (pop-to-buffer-same-window (my/project-note-buffer (my/task-project-root t))))
 
 (defun my/task-agenda-files ()
-  "Discover personal notes and known projects' Org notes for the agenda."
-  (let* ((notes (if my/task-files-function (funcall my/task-files-function) (my/task--note-files)))
-         (roots (project-known-project-roots))
-         (files (append notes my/task-legacy-files my/task-extra-files
-                        (cl-loop for root in roots
-                                 when (and (not (file-remote-p root)) (file-directory-p root))
-                                 collect (my/project-note-path root)))))
+  "Return the note graph's task files, the extra files and project notes."
+  (org-note-graph-ensure)
+  (let ((files (append (org-note-graph-task-files) my/task-extra-files
+                       (cl-loop for root in (project-known-project-roots)
+                                when (and (not (file-remote-p root)) (file-directory-p root))
+                                collect (my/project-note-path root)))))
     (delete-dups
      (mapcar #'file-truename
              (seq-filter #'my/task--available-file-p (mapcar #'expand-file-name files))))))
@@ -254,23 +229,17 @@ When NODE is non-nil, assign a file ID for stable links."
   (setq-local buffer-face-mode-face 'fixed-pitch)
   (buffer-face-mode 1))
 
-(defun my/task--skip-other-project (root)
-  "Skip this heading unless it belongs to ROOT, without skipping its children."
-  (unless (and buffer-file-name (file-in-directory-p buffer-file-name root))
-    (save-excursion (outline-next-heading) (point))))
-
 (defun my/project-task-agenda (&optional _match)
   "Render `my/project-task-agenda-blocks' for the current or selected project.
 Use ordinary Org block-agenda settings so its standard refresh retains ROOT."
   (let* ((root (my/task-project-root t))
-         (title (concat "Project: " (file-name-nondirectory (directory-file-name root))))
-         (skip (lambda () (my/task--skip-other-project root))))
+         (title (concat "Project: " (file-name-nondirectory (directory-file-name root)))))
     (org-agenda-run-series
      title
      (list my/project-task-agenda-blocks
-           `((org-agenda-files (my/task-agenda-files))
-             (org-agenda-buffer-name "*Project Tasks*")
-             (org-agenda-skip-function ',skip))))))
+           `((org-agenda-files (seq-filter (lambda (file) (file-in-directory-p file ,root))
+                                           (my/task-agenda-files)))
+             (org-agenda-buffer-name "*Project Tasks*"))))))
 
 (defun my/project-task-overview ()
   "Open the standard agenda menu's project overview command."

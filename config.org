@@ -51,7 +51,6 @@ Built-in libraries at their ELPA versions come from Emacs. Pin with =straight-fr
                    external-completion seq map let-alist))
   (add-to-list 'straight-built-in-pseudo-packages package))
 (require 'use-package)
-(use-package diminish)
 #+end_src
 
 * Core defaults
@@ -102,15 +101,21 @@ Built-in libraries at their ELPA versions come from Emacs. Pin with =straight-fr
 
 (keymap-global-set "C-j" #'join-line)
 (keymap-global-set "C-S-j" #'duplicate-line)
-(keymap-global-set "C-x O" (lambda () (interactive) (other-window -1)))
+(defun my/other-window-backward ()
+  "Select the previous window."
+  (interactive)
+  (other-window -1))
+
+(keymap-global-set "C-x O" #'my/other-window-backward)
 (keymap-global-set "C-x C" #'my/open-config)
 (keymap-global-set "C-x C-k l" #'list-keyboard-macros)
 (keymap-global-set "C-c i" #'insert-char)
 
 (use-package which-key
   :straight nil
-  :diminish
-  :custom (which-key-idle-secondary-delay 0.3)
+  :custom
+  (which-key-idle-secondary-delay 0.3)
+  (which-key-lighter "")
   :config (which-key-mode t))
 #+end_src
 
@@ -368,7 +373,7 @@ Side panes for documentation and processes; language sections register their REP
                  nil
                  (window-parameters (mode-line-format . none)))))
 
-(use-package embark-consult)
+(use-package embark-consult :defer t)
 (use-package wgrep)
 #+end_src
 
@@ -385,6 +390,11 @@ Side panes for documentation and processes; language sections register their REP
         (if backward (isearch-backward) (isearch-forward))
         (other-window (- next))))))
 
+(defun my/isearch-other-window-backward ()
+  "Search backward in the previous window."
+  (interactive)
+  (my/isearch-other-window t))
+
 (use-package avy
   :bind
   ("M-g w" . avy-goto-word-0)
@@ -392,7 +402,7 @@ Side panes for documentation and processes; language sections register their REP
   ("M-J" . avy-resume)
   ("M-j" . avy-goto-char-timer)
   ("C-M-s" . my/isearch-other-window)
-  ("C-M-r" . (lambda () (interactive) (my/isearch-other-window t)))
+  ("C-M-r" . my/isearch-other-window-backward)
   :custom
   (avy-background t)
   (avy-all-windows nil)
@@ -500,21 +510,15 @@ Org and EWW share margins, spacing and adaptive text size; =M-x olivetti-mode= e
   :config
   (add-hook 'completion-at-point-functions #'yasnippet-capf t))
 
-(use-package smartparens
-  :config
-  (require 'smartparens-config)
-  (sp-use-smartparens-bindings)
-  (smartparens-global-mode 1))
+(electric-pair-mode 1)
 #+end_src
 
 ** Multiple cursors
 
 #+begin_src emacs-lisp
 (use-package multiple-cursors
-  :config
-  ;; Phi is needed only when moving multiple cursors.
-  (keymap-set mc/keymap "C-s" #'phi-search)
-  (keymap-set mc/keymap "C-r" #'phi-search-backward)
+  :defer t
+  :init
   (defvar-keymap mc-repeat-map
     :repeat t
     "n" #'mc/mark-next-like-this
@@ -522,22 +526,37 @@ Org and EWW share margins, spacing and adaptive text size; =M-x olivetti-mode= e
     "N" #'mc/skip-to-next-like-this
     "P" #'mc/skip-to-previous-like-this)
   (keymap-global-set "C-S-c" mc-repeat-map)
-  (keymap-set mc/keymap "<return>" nil)
-  (keymap-global-set "C-S-c C-S-c" 'mc/edit-lines)
-  (keymap-global-set "C-S-c a" 'mc/mark-all-symbols-like-this)
-  (keymap-global-set "C-S-c d" 'mc/mark-all-like-this-dwim)
-  (keymap-global-set "C-S-c e" 'mc/mark-more-like-this-extended))
+  (keymap-global-set "C-S-c C-S-c" #'mc/edit-lines)
+  (keymap-global-set "C-S-c a" #'mc/mark-all-symbols-like-this)
+  (keymap-global-set "C-S-c d" #'mc/mark-all-like-this-dwim)
+  (keymap-global-set "C-S-c e" #'mc/mark-more-like-this-extended)
+  :config
+  ;; Phi is needed only when moving multiple cursors.
+  (keymap-set mc/keymap "C-s" #'phi-search)
+  (keymap-set mc/keymap "C-r" #'phi-search-backward)
+  (keymap-set mc/keymap "<return>" nil))
 #+end_src
 
 ** Structural selection
 
-=C-=/C-M-== expand and contract by syntax node; =C-c s= filters.
+struktur.el: =C-=/C-M-== expand and contract by syntax node, then =M-n/M-p= siblings, =M-u/M-d= parent and
+child, =M-N/M-P= swap and =RET= a cursor per target. =C-c s=: =s= select the region or cursors, =q= query a pattern,
+=r= rewrite with a template, =c= cursors, =f= filters.
 
 #+begin_src emacs-lisp
-(require 'my-treesit)
-(keymap-global-set "C-=" #'my/treesit-expand)
-(keymap-global-set "C-M-=" #'my/treesit-contract)
-(keymap-global-set "C-c s" my/treesit-action-map)
+(use-package struktur
+  :straight (:host github :repo "TheRobotFox/struktur.el"
+             :local-repo "~/projects/struktur.el"
+             :files ("struktur*.el"))
+  :demand t
+  :custom
+  (struktur-fallback-expand #'er/expand-region)
+  (struktur-fallback-contract #'er/contract-region)
+  :config
+  (require 'struktur-select)
+  (keymap-global-set "C-=" #'struktur-expand)
+  (keymap-global-set "C-M-=" #'struktur-contract)
+  (keymap-global-set "C-c s" struktur-command-map))
 #+end_src
 
 * Development
@@ -607,7 +626,7 @@ Org and EWW share margins, spacing and adaptive text size; =M-x olivetti-mode= e
 
 ** LaTeX in comments
 
-LaTeX previews in code comments; preamble in =latex/preview-master.tex=.
+LaTeX previews in Haskell and C/C++ comments; preamble in =latex/preview-master.tex=.
 
 #+begin_src emacs-lisp
 (require 'my-latex-preview)
@@ -615,7 +634,7 @@ LaTeX previews in code comments; preamble in =latex/preview-master.tex=.
 (use-package preview-auto
   :straight (:host github :repo "ultronozm/preview-auto.el")
   :commands preview-auto-mode
-  :hook (prog-mode . my/latex-comment-preview-auto-enable)
+  :hook ((haskell-mode c-ts-base-mode) . my/latex-comment-preview-auto-enable)
   :custom (preview-auto-interval 0.3))
 #+end_src
 
@@ -748,10 +767,13 @@ Block comment continuation on =RET=; banners, Doxygen skeletons and source files
 
 #+begin_src emacs-lisp
 (use-package maxima
-  :config
-  (add-to-list 'load-path "/usr/share/emacs/site-lisp/maxima/")
-  (autoload 'imaxima "imaxima" "Frontend for maxima with Image support" t)
-  (autoload 'imath-mode "imath" "Imath mode for math formula input" t))
+  :straight nil
+  :load-path "/usr/share/emacs/site-lisp/maxima/"
+  :mode ("\\.mac\\'" . maxima-mode)
+  :commands maxima
+  :init
+  (autoload 'imaxima "imaxima" nil t)
+  (autoload 'imath-mode "imath" nil t))
 #+end_src
 
 * Org
@@ -788,9 +810,8 @@ The tecosaur fork supplies the live LaTeX preview API; Emacs's bundled Org does 
                    "(provide 'org-version)\n")))
               :pin nil))
 
-(use-package org-contrib
-  :after org)
 (use-package org-eldoc
+  :straight org-contrib
   :after org)
 
 (setopt org-default-notes-file (expand-file-name "notes.org" org-directory)
@@ -884,6 +905,7 @@ Images follow text zoom; width attributes set their base size.
 (use-package auctex)
 (use-package tex
   :straight nil
+  :defer t
   :custom
   (TeX-view-program-selection '(((output-dvi has-no-display-manager) "dvi2tty")
                                 ((output-dvi style-pstricks) "dvips and gv")
@@ -938,6 +960,7 @@ Images follow text zoom; width attributes set their base size.
 #+begin_src emacs-lisp
 (setopt org-export-backends '(ascii beamer html icalendar latex man odt)
         org-latex-packages-alist nil)
+(use-package htmlize :defer t)
 (with-eval-after-load 'ox-html
   (setq org-html-prefer-user-labels t))
 (add-hook 'org-export-filter-options-functions #'my/org-beispiel-export-options)
@@ -954,8 +977,7 @@ TODO headings live anywhere: project READMEs, notes, the inbox. =my-tasks= disco
   :straight nil
   :demand t
   :config
-  (setopt my/notes-directory (file-truename "~/org/roam/")
-          my/task-legacy-files '("~/org/todos.org" "~/org/questions.org" "~/org/ideas.org" "~/org/notes.org")))
+  (setopt my/notes-directory (file-truename "~/org/roam/")))
 
 (setq org-todo-keywords
       '((sequence
@@ -1011,8 +1033,7 @@ Agenda files come from the note index. Tags are note groups, so the agenda hides
    ((agenda "" ((org-agenda-span 7)))
     (alltodo "" ((org-agenda-overriding-header "All open tasks")
                  (org-agenda-sorting-strategy '(category-keep todo-state-up priority-down)))))
-   ((org-agenda-files (my/task-agenda-files))
-    (org-agenda-buffer-name "*Task Overview*"))))
+   ((org-agenda-buffer-name "*Task Overview*"))))
 
 (org-add-agenda-custom-command
  '("f" "Focus: today and next actions"
@@ -1021,8 +1042,7 @@ Agenda files come from the note index. Tags are note groups, so the agenda hides
                 (org-agenda-overriding-header "Today")))
     (todo "NEXT" ((org-agenda-overriding-header "Next actions")
                   (org-agenda-sorting-strategy '(category-keep priority-down)))))
-   ((org-agenda-files (my/task-agenda-files))
-    (org-agenda-buffer-name "*Task Focus*"))))
+   ((org-agenda-buffer-name "*Task Focus*"))))
 
 (org-add-agenda-custom-command
  '("r" "Review: inbox, decisions, and waiting"
@@ -1034,8 +1054,7 @@ Agenda files come from the note index. Tags are note groups, so the agenda hides
                   (org-agenda-skip-function #'my/task-skip-inbox)))
     (todo "HOLD|IDEA|DISSOLVE" ((org-agenda-overriding-header "Deferred — reconsider")
                                 (org-agenda-skip-function #'my/task-skip-inbox))))
-   ((org-agenda-files (my/task-agenda-files))
-    (org-agenda-sorting-strategy '(category-keep priority-down))
+   ((org-agenda-sorting-strategy '(category-keep priority-down))
     (org-agenda-buffer-name "*Task Review*"))))
 
 (org-add-agenda-custom-command
@@ -1098,7 +1117,7 @@ Agenda files come from the note index. Tags are note groups, so the agenda hides
 *** Note graph
 
 Nodes are files and ID headings, indexed by org-mem.
-=C-c n=: =f= find, =i= insert, =b/l= links, =t= add a tag (prefix removes), =g= content, =h= broken links, =r= reindex, =a= alias, =d= scope, =T= capture, =C= id, =I= inspect, =m= mark the word or region as a definition (=[[def:Term;alias][text]]=), =Q/q= query view or pick a result. =M-.= jumps to definitions; =M-o n= toggles the backlink pane.
+=C-c n=: =f= find, =i= insert, =b/l= links, =t= add a tag (prefix removes), =g= content, =h= problems, =r= reindex, =a= alias, =T= capture, =C= id, =I= inspect, =m= mark the word or region as a definition (=[[def:Term;alias][text]]=), =Q/q= query view or pick a result. =M-.= jumps to definitions; =M-o n= toggles the backlink pane.
 
 #+begin_src emacs-lisp
 (use-package org-mem
@@ -1124,7 +1143,6 @@ Nodes are files and ID headings, indexed by org-mem.
   (org-note-graph-xref-sources '(("Definition")))
   :config
   (require 'org-note-graph-tags)
-  (require 'org-note-graph-text)
   (require 'org-note-graph-keywords)
   (require 'org-note-graph-relations)
   (require 'org-note-graph-markers)
@@ -1142,11 +1160,10 @@ Nodes are files and ID headings, indexed by org-mem.
   (org-note-graph-define-collection "Definition" :requires '(:name)
                                     :doc "Inline Definitionen")
   (org-note-graph-add-provider 'definition-forward
-			       (org-note-graph-tag-forward "Tags" "Definition" "Definition"))
+                               (org-note-graph-tag-forward "Tags" "Definition" "Definition"))
   (org-note-graph-define-marker "def" :collection "Definition")
   (org-note-graph-define-collection "dual" :requires '(:source :target)
                                     :doc "Dual concepts, read in both directions.")
-  
   (org-note-graph-define-collection "impl" :requires '(:source :target)
                                     :doc "Generalisierung un Spezialisierung")
 
@@ -1157,8 +1174,6 @@ Nodes are files and ID headings, indexed by org-mem.
   (add-hook 'my/project-note-hook
             (lambda () (add-to-list 'org-id-extra-files buffer-file-name)))
   (org-mem-updater-mode 1)
-  (setq my/task-files-function (lambda () (org-note-graph-ensure) (org-note-graph-task-files)))
-  (setq my/task-note-locator (lambda () (org-note-graph-goto (org-note-graph-read "Task in note: "))))
   (add-to-list 'my/popup-documentation-modes 'org-note-graph-view-mode)
   (add-to-list 'my/popup-documentation-names "\\`\\*Notes: ")
   (setq my/popup-root-function #'my/task-project-root))
@@ -1183,10 +1198,9 @@ Nodes are files and ID headings, indexed by org-mem.
   "l" #'org-note-graph-forward-links
   "t" #'org-note-graph-add-tag
   "g" #'org-note-graph-search-content
-  "h" #'org-note-graph-unresolved
+  "h" #'org-note-graph-lint
   "r" #'org-note-graph-refresh
   "a" #'my/notes-alias-add
-  "d" #'org-note-graph-text-setup
   "T" #'org-note-graph-capture
   "C" #'org-id-get-create
   "I" #'org-note-graph-inspect
@@ -1203,10 +1217,10 @@ Nodes are files and ID headings, indexed by org-mem.
 
 *** Sources and reading
 
-Citar for bibliography and citations, Org-ref for imports; =my-sources= runs the reading queue and
+Citar for bibliography and citations; =my-sources= imports papers and runs the reading queue and
 source notes, created at the first captured thought (=C-c c q/r=) or with =C-u C-c r s=.
 =C-c r=: =a= queue (same as =C-c c s=), =b= add a bibliography entry by hand, =s= start reading, =f= finish with a verdict, =q= the queue.
-Notes map: =B= browse, =S= notes, =A= associate, =D/X= import, =N= annotate.
+Notes map: =B= browse, =S= notes, =A= associate, =D= import a DOI or arXiv paper (PDFs from arXiv or Unpaywall), =N= annotate.
 
 #+begin_src emacs-lisp
 (use-package citar
@@ -1222,6 +1236,8 @@ Notes map: =B= browse, =S= notes, =A= associate, =D/X= import, =N= annotate.
           org-cite-follow-processor 'citar
           org-cite-activate-processor 'citar
           org-cite-export-processors '((latex biblatex) (t basic)))
+  (setopt bibtex-autokey-year-title-separator "_"
+          bibtex-autokey-titlewords 1)
   (add-to-list 'my/task-extra-files my/reading-file)
   (org-note-graph-define-collection "Sources" :requires '(:name) :doc "Web and file sources of notes.")
   (org-note-graph-add-provider 'sources
@@ -1229,28 +1245,22 @@ Notes map: =B= browse, =S= notes, =A= associate, =D/X= import, =N= annotate.
   (keymap-set my/notes-map "B" #'citar-open)
   (keymap-set my/notes-map "S" #'citar-open-notes)
   (keymap-set my/notes-map "A" #'my/source-associate)
+  (keymap-set my/notes-map "D" #'my/source-add)
+  (defun my/reading-add ()
+    "Queue the copied URL, DOI or arXiv reference for reading."
+    (interactive)
+    (org-capture nil "s"))
+  (defun my/reading-queue ()
+    "Show the reading queue."
+    (interactive)
+    (org-agenda nil "s"))
   (defvar-keymap my/reading-map
-    "a" (lambda () (interactive) (org-capture nil "s"))
+    "a" #'my/reading-add
     "b" #'my/source-new-entry
     "s" #'my/reading-start
     "f" #'my/reading-finish
-    "q" (lambda () (interactive) (org-agenda nil "s")))
+    "q" #'my/reading-queue)
   (keymap-global-set "C-c r" my/reading-map))
-
-;; Org-ref's PDF downloader uses async without declaring the dependency.
-(use-package async :defer t)
-
-(use-package org-ref
-  :after citar
-  :demand t
-  :custom
-  (bibtex-completion-bibliography citar-bibliography)
-  (bibtex-completion-library-path citar-library-paths)
-  :config
-  (make-directory (car citar-library-paths) t)
-  (require 'org-ref-arxiv)
-  (keymap-set my/notes-map "D" #'doi-utils-add-bibtex-entry-from-doi)
-  (keymap-set my/notes-map "X" #'arxiv-get-pdf-add-bibtex-entry))
 
 (use-package citar-embark
   :after (citar embark)
@@ -1284,6 +1294,8 @@ Notes map: =B= browse, =S= notes, =A= associate, =D/X= import, =N= annotate.
 Inbox and Sent are fetched with mbsync; credentials live in =~/.config/isync/=.
 
 #+begin_src emacs-lisp
+(setopt user-mail-address "pfoch.tomke@gmail.com")
+
 (use-package mu4e
   :straight nil
   :load-path "/usr/share/emacs/site-lisp/mu4e"
@@ -1292,8 +1304,7 @@ Inbox and Sent are fetched with mbsync; credentials live in =~/.config/isync/=.
   (require 'smtpmail)
   (add-to-list 'auth-sources (expand-file-name "~/.config/isync/gmail.authinfo"))
   (add-to-list 'auth-sources (expand-file-name "~/.config/isync/university.authinfo"))
-  (setq user-mail-address "pfoch.tomke@gmail.com"
-        mu4e-mu-home (expand-file-name "~/.cache/mu-gmail")
+  (setq mu4e-mu-home (expand-file-name "~/.cache/mu-gmail")
         mu4e-get-mail-command "mbsync -c ~/.config/isync/gmail gmail"
         mu4e-update-interval 300
         mu4e-change-filenames-when-moving t

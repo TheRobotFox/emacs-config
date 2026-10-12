@@ -14,18 +14,22 @@
 (require 'org-id)
 (require 'org-capture)
 (require 'org-agenda)
+(require 'subr-x)
 (require 'org-note-graph-ui)
 
 (declare-function eww-current-url "eww")
 (declare-function eww "eww" (url &optional new-buffer buffer))
 (declare-function pdf-view-active-region-p "pdf-view")
 (declare-function pdf-view-active-region-text "pdf-view")
-(declare-function doi-utils-add-bibtex-entry-from-doi "doi-utils" (doi &optional bibfile))
-(declare-function org-ref-bibtex-key-from-doi "org-ref-pdf" (doi))
-(declare-function arxiv-get-pdf-add-bibtex-entry "org-ref-arxiv" (arxiv-number bibfile pdfdir))
-(declare-function bibtex-parse-entry "bibtex" (&optional content))
 (declare-function bibtex-beginning-of-entry "bibtex")
+(declare-function bibtex-clean-entry "bibtex" (&optional new-key called-by-reformat))
+(declare-function bibtex-key-in-head "bibtex" (&optional empty))
 (defvar eww-data)
+(defvar bibtex-entry-format)
+(defvar bibtex-autokey-edit-before-use)
+(defvar url-mime-accept-string)
+(defvar url-http-response-status)
+(defvar url-http-end-of-headers)
 
 (defgroup my/sources nil "Reading queue and source notes." :group 'org)
 (defcustom my/source-bibliography (expand-file-name "references.bib" org-directory)
@@ -60,46 +64,98 @@
           ((string-match (concat "\\`doi:" doi "\\'") text) (match-string 1 text))
           ((string-match (concat "\\`" doi "\\'") text) (match-string 1 text)))))
 
-(defun my/source--last-key ()
-  "Return the key of the last entry in the bibliography."
-  (with-temp-buffer
-    (insert-file-contents my/source-bibliography)
-    (goto-char (point-max))
-    (bibtex-beginning-of-entry)
-    (cdr (assoc "=key=" (bibtex-parse-entry)))))
+;;;; Import
 
-(defun my/source--bibliography-has (text)
-  "Whether the bibliography mentions TEXT."
-  (with-temp-buffer
-    (insert-file-contents my/source-bibliography)
-    (search-forward text nil t)))
+(defun my/source--fetch (url accept read)
+  "Call READ at the body of URL's response, requesting media type ACCEPT.
+Return its value, or nil when the request fails."
+  (let ((url-mime-accept-string accept))
+    (when-let* ((buffer (ignore-errors (url-retrieve-synchronously url t t 30))))
+      (with-current-buffer buffer
+        (unwind-protect
+            (when (eql url-http-response-status 200)
+              (goto-char url-http-end-of-headers)
+              (forward-line)
+              (funcall read))
+          (kill-buffer buffer))))))
 
-(defvar bibtex-entry-format)
+(defun my/source--text ()
+  "Return the rest of the buffer, decoded as UTF-8."
+  (decode-coding-string (buffer-substring-no-properties (point) (point-max)) 'utf-8))
+
+(defun my/source--open-access-pdf (doi)
+  "Return Unpaywall's URL for an open-access PDF of DOI, or nil."
+  (my/source--fetch (format "https://api.unpaywall.org/v2/%s?email=%s" doi user-mail-address)
+                    "application/json"
+                    (lambda () (let-alist (json-parse-buffer :object-type 'alist :null-object nil)
+                                 .best_oa_location.url_for_pdf))))
+
+(defun my/source--save-pdf (url key)
+  "Save the PDF at URL as KEY's library file; return the file, or nil."
+  (let ((file (expand-file-name (concat key ".pdf") (car citar-library-paths))))
+    (make-directory (file-name-directory file) t)
+    (my/source--fetch url "application/pdf"
+                      (lambda () (when (looking-at-p "%PDF")
+                                   (let ((coding-system-for-write 'binary))
+                                     (write-region (point) (point-max) file nil 'silent))
+                                   file)))))
+
+(defun my/source--key-where (field value)
+  "Return the key of the bibliography entry whose FIELD is VALUE, or nil."
+  (seq-find (lambda (key) (string-equal-ignore-case value (or (citar-get-value field key) "")))
+            (hash-table-keys (citar-get-entries))))
+
+(defun my/source--add-entry (bibtex)
+  "Append the BibTeX entry BIBTEX to the bibliography and return its new key.
+Publisher metadata is often incomplete, so missing mandatory fields pass."
+  (with-current-buffer (find-file-noselect my/source-bibliography)
+    (save-excursion
+      (goto-char (point-max))
+      (insert "\n" (string-trim bibtex) "\n")
+      (bibtex-beginning-of-entry)
+      (let ((bibtex-entry-format '(opts-or-alts numerical-fields realign))
+            (bibtex-autokey-edit-before-use nil))
+        (bibtex-clean-entry t))
+      (bibtex-beginning-of-entry)
+      (prog1 (bibtex-key-in-head) (save-buffer)))))
+
+(defun my/source--import (field id bibtex-url pdf-url)
+  "Return the key of the entry whose FIELD is ID, importing it when missing.
+BIBTEX-URL serves the entry; PDF-URL is a function returning a PDF URL or nil."
+  (if-let* ((key (my/source--key-where field id)))
+      (progn (message "%s is already in the bibliography" key) key)
+    (let* ((key (my/source--add-entry
+                 (or (my/source--fetch bibtex-url "application/x-bibtex" #'my/source--text)
+                     (user-error "No BibTeX entry for %s" id))))
+           (pdf (when-let* ((url (funcall pdf-url))) (my/source--save-pdf url key))))
+      (message (if pdf "Imported %s with its PDF"
+                 "Imported %s; attach a PDF with `citar-add-file-to-library'")
+               key)
+      key)))
 
 (defun my/source-import (text)
   "Resolve TEXT to a resource, importing a paper into the bibliography.
-An arXiv reference adds its entry and PDF; a DOI adds its entry and tries to
-fetch the PDF, which fails quietly behind paywalls; a URL stays a URL.
-Imported entries skip bibtex-mode's mandatory-field check, since publisher
-metadata is often incomplete; `my/source-new-entry' covers the rest by hand."
-  (require 'bibtex)
-  (let ((bibtex-entry-format (remq 'required-fields bibtex-entry-format)))
-    (cond
-     ((my/source--arxiv-id text)
-      (let ((id (my/source--arxiv-id text)))
-        (require 'org-ref-arxiv)
-        (unless (my/source--bibliography-has id)
-          (message "Importing arXiv:%s..." id)
-          (arxiv-get-pdf-add-bibtex-entry id my/source-bibliography (car citar-library-paths)))
-        (cons 'citekey (my/source--last-key))))
-     ((my/source--doi text)
-      (let ((doi (my/source--doi text)))
-        (require 'org-ref)
-        (require 'org-ref-pdf)
-        (message "Importing doi:%s..." doi)
-        (doi-utils-add-bibtex-entry-from-doi doi my/source-bibliography)
-        (cons 'citekey (or (org-ref-bibtex-key-from-doi doi) (user-error "Import of %s failed" doi)))))
-     ((my/source-url-p text) (cons 'url text)))))
+An arXiv reference brings its entry and PDF, a DOI its entry and an
+open-access PDF when Unpaywall knows one.  A URL stays a URL."
+  (let ((arxiv (my/source--arxiv-id text))
+        (doi (my/source--doi text)))
+    (cond (arxiv
+           (let ((id (replace-regexp-in-string "v[0-9]+\\'" "" arxiv)))
+             (cons 'citekey (my/source--import "eprint" id (concat "https://arxiv.org/bibtex/" id)
+                                               (lambda () (concat "https://arxiv.org/pdf/" id))))))
+          (doi
+           (cons 'citekey (my/source--import "doi" doi (concat "https://doi.org/" doi)
+                                             (lambda () (my/source--open-access-pdf doi)))))
+          ((my/source-url-p text) (cons 'url text)))))
+
+(defun my/source-add (text)
+  "Import the paper TEXT names, a DOI or an arXiv reference."
+  (interactive
+   (let ((copied (string-trim (or (ignore-errors (current-kill 0 t)) ""))))
+     (list (read-string "DOI or arXiv reference: "
+                        (and (or (my/source--doi copied) (my/source--arxiv-id copied)) copied)))))
+  (unless (eq (car-safe (my/source-import (string-trim text))) 'citekey)
+    (user-error "Not a DOI or arXiv reference: %s" text)))
 
 (defun my/source-new-entry ()
   "Add a bibliography entry by hand: insert a template at the end of the file.
@@ -112,25 +168,23 @@ Fill the fields, then C-c C-c cleans the entry and generates its key."
 
 (defun my/source--file-citekey (file)
   "Return the citekey whose library files include FILE, or nil."
-  (let (found)
-    (maphash (lambda (key files)
-               (when (seq-some (lambda (candidate) (file-equal-p candidate file)) files)
-                 (setq found key)))
-             (citar-get-files))
-    found))
+  (let ((library (citar-get-files)))
+    (seq-find (lambda (key) (seq-some (lambda (candidate) (file-equal-p candidate file))
+                                      (gethash key library)))
+              (hash-table-keys library))))
 
 (defun my/source-entry-resource ()
   "Return the resource described by the Org entry at point, or nil."
-  (cond ((org-entry-get nil "CITEKEY") (cons 'citekey (org-entry-get nil "CITEKEY")))
-        ((org-entry-get nil "SOURCE")
-         (let ((value (org-entry-get nil "SOURCE")))
-           (cons (if (my/source-url-p value) 'url 'file) value)))
-        ((save-excursion
-           (org-back-to-heading t)
-           (let ((end (save-excursion (org-end-of-subtree t t))))
-             (when (re-search-forward org-link-any-re end t)
-               (let ((url (or (match-string-no-properties 2) (match-string-no-properties 0))))
-                 (and (my/source-url-p url) (cons 'url url)))))))))
+  (let ((key (org-entry-get nil "CITEKEY"))
+        (source (org-entry-get nil "SOURCE")))
+    (cond (key (cons 'citekey key))
+          (source (cons (if (my/source-url-p source) 'url 'file) source))
+          ((save-excursion
+             (org-back-to-heading t)
+             (let ((end (save-excursion (org-end-of-subtree t t))))
+               (when (re-search-forward org-link-any-re end t)
+                 (let ((url (or (match-string-no-properties 2) (match-string-no-properties 0))))
+                   (and (my/source-url-p url) (cons 'url url))))))))))
 
 (defun my/source-current-resource ()
   "Return the resource of the current buffer.
@@ -246,20 +300,20 @@ A page in EWW, a PDF, a queue item or agenda line, or a source note."
 
 ;;;; Reading queue
 
-(defun my/reading--items ()
-  "Return markers of open queue items, in-progress ones first."
+(defun my/reading--map (function)
+  "Call FUNCTION at each open queue item and return its non-nil results."
   (with-current-buffer (find-file-noselect my/reading-file)
     (org-with-wide-buffer
-     (sort (org-map-entries (lambda () (cons (org-get-todo-state) (point-marker))) "/!TODO|NEXT" 'file)
-           (lambda (a b) (and (equal (car a) "NEXT") (not (equal (car b) "NEXT"))))))))
+     (delq nil (org-map-entries function "/!TODO|NEXT" 'file)))))
+
+(defun my/reading--items ()
+  "Return (STATE . MARKER) for open queue items, in-progress ones first."
+  (sort (my/reading--map (lambda () (cons (org-get-todo-state) (point-marker))))
+        (lambda (a b) (and (equal (car a) "NEXT") (not (equal (car b) "NEXT"))))))
 
 (defun my/reading--item-for (resource)
   "Return a marker at the queue item describing RESOURCE, or nil."
-  (with-current-buffer (find-file-noselect my/reading-file)
-    (org-with-wide-buffer
-     (seq-find #'identity
-               (org-map-entries (lambda () (and (equal (my/source-entry-resource) resource) (point-marker)))
-                                "/!TODO|NEXT" 'file)))))
+  (car (my/reading--map (lambda () (and (equal (my/source-entry-resource) resource) (point-marker))))))
 
 (defun my/reading--select-item ()
   "Choose an open queue item and return a marker at it."
