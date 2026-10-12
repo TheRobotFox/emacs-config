@@ -2,7 +2,7 @@
 
 #+PROPERTY: header-args:emacs-lisp :tangle init.el :results none
 
-Edit here and tangle with =C-c C-v t=; =init.el= is tracked. Components live in =lisp/=, this file wires them.
+Edit here and tangle with =C-c C-v t=. Components live in =lisp/=, this file wires them.
 
 * Bootstrap
 
@@ -192,7 +192,6 @@ Side panes for documentation and processes; language sections register their REP
   (my/popup-documentation-modes '(help-mode dictionary-mode))
   ;; Dictionary displays its buffer before initializing the major mode.
   (my/popup-documentation-names '("\\` *\\*eldoc\\*" "\\`\\*Dictionary\\*\\(?:<[0-9]+>\\)?\\'"))
-  (my/popup-process-modes '(comint-mode eshell-mode vterm-mode term-mode))
   :config
   (defvar-keymap my/popup-command-map
     "e" #'my/popup-eshell
@@ -221,7 +220,6 @@ Side panes for documentation and processes; language sections register their REP
         '("\\*Messages\\*"
           "Output\\*$"
           "\\*Async Shell Command\\*"
-          "\\*Flycheck error messages\\*"
           my/popup-reference-p
           help-mode
           compilation-mode))
@@ -871,7 +869,7 @@ Variable pitch, images that follow zoom, folded diagram and proof blocks (=#+ATT
 Images follow text zoom; width attributes set their base size.
 
 #+begin_src emacs-lisp
-;; Scanner locations use text searches within their owning note.
+;; Links to facts search for their text within the note.
 (setopt org-link-search-must-match-exact-headline nil)
 (setopt org-display-remote-inline-images 'cache
         org-image-actual-width '(600)
@@ -1099,8 +1097,8 @@ Agenda files come from the note index. Tags are note groups, so the agenda hides
 
 *** Note graph
 
-Nodes are files and ID headings, indexed by org-mem. Collections: =Tags= from native tags and =SCAN= scopes (=SCAN_TARGET: Tags("Definition")=), =Aliases= from =ALIASES=, =Dualismen= from =PAIR_TARGET= lists.
-=C-c n=: =f= find, =i= insert, =b/l= links, =t= add a tag (prefix removes), =g= content, =h= broken links, =r= reindex, =a= alias, =d= scope, =T= capture, =C= id, =I= inspect, =m= mark the word or region as a definition (=[[def:Term|alias][text]]=), =q/Q= query view or pick a result. =M-.= jumps to definitions; =M-o n= toggles the backlink pane.
+Nodes are files and ID headings, indexed by org-mem.
+=C-c n=: =f= find, =i= insert, =b/l= links, =t= add a tag (prefix removes), =g= content, =h= broken links, =r= reindex, =a= alias, =d= scope, =T= capture, =C= id, =I= inspect, =m= mark the word or region as a definition (=[[def:Term;alias][text]]=), =Q/q= query view or pick a result. =M-.= jumps to definitions; =M-o n= toggles the backlink pane.
 
 #+begin_src emacs-lisp
 (use-package org-mem

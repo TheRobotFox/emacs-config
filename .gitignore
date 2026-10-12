@@ -1,3 +1,7 @@
+# Tangled from config.org
+/init.el
+/early-init.el
+
 # Package manager state (straight/versions/default.el is the lockfile and is tracked)
 /straight/*
 !/straight/versions/
@@ -13,6 +17,7 @@
 /url/
 /.cache/
 /history
+/bookmarks
 /recentf
 /bookmarks.eld
 /projects.eld
@@ -20,7 +25,11 @@
 /network-security.eld
 /.org-id-locations
 /org-roam.db
-/.mc-lists.el
+
+# Local only: tests, downloaded docs, parked experiments
+/tests/
+/devdocs/
+/experiments/
 
 # Build and editor artifacts
 *.elc
