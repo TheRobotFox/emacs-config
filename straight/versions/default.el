@@ -75,5 +75,5 @@
  ("yasnippet-capf" . "f53c42a996b86fc95b96bdc2deeb58581f48c666")
  ("yasnippet-snippets" . "606ee926df6839243098de6d71332a697518cb86")
  ("~/projects/org-note-graph" . "933e0f249290d99b146174ff21c89e583c8953c3")
- ("~/projects/struktur.el" . "55d4e3cce1311a2a67fa9612b916da9195d8b39b"))
+ ("~/projects/struktur.el" . "aad90be29b586b76242db0d574f8f0567c50f398"))
 :epsilon
