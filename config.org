@@ -1117,7 +1117,8 @@ Agenda files come from the note index. Tags are note groups, so the agenda hides
 *** Note graph
 
 Nodes are files and ID headings, indexed by org-mem.
-=C-c n=: =f= find, =i= insert, =b/l= links, =t= add a tag (prefix removes), =g= content, =h= problems, =r= reindex, =a= alias, =T= capture, =C= id, =I= inspect, =m= mark the word or region as a definition (=[[def:Term;alias][text]]=), =Q/q= query view or pick a result. =M-.= jumps to definitions; =M-o n= toggles the backlink pane.
+=C-c n=: =f= find any name, =i= insert, =b/l= links, =t= tag, =g= content, =h= problems, =r= reindex, =a= alias, =T= capture, =C= id, =I= inspect, =d= define, =p= name paragraph, =x= extract, =Q/q= query.
+=:MOC:= marks member lists (file or heading); =M-.= visits names; =M-o n= context pane.
 
 #+begin_src emacs-lisp
 (use-package org-mem
@@ -1140,32 +1141,42 @@ Nodes are files and ID headings, indexed by org-mem.
   (org-note-graph-open-function #'my/popup-open-source)
   (org-note-graph-read-function #'org-note-graph-consult-read)
   (org-note-graph-alias-sources '(("Aliases")))
-  (org-note-graph-xref-sources '(("Definition")))
+  (org-note-graph-member-collection "Members")
+  (org-note-graph-context-grouped-kinds '("use" "Members"))
+  (org-note-graph-stem-function #'org-note-graph-german-stem)
   :config
   (require 'org-note-graph-tags)
   (require 'org-note-graph-keywords)
   (require 'org-note-graph-relations)
   (require 'org-note-graph-markers)
   (require 'org-note-graph-xref)
+  (require 'org-note-graph-german)
+  (require 'org-note-graph-context)
   (require 'org-note-graph-discovery)
   (require 'org-note-graph-query)
   (org-note-graph-define-collection "Tags" :args '(:tag) :requires '(:tag :name)
                                     :doc "Notes, headings and spans grouped by a tag.")
   (org-note-graph-add-provider 'tags (org-note-graph-tags-provider "Tags"))
+  (org-note-graph-define-collection "Members" :requires '(:source :target)
+                                    :doc "Notes in member lists, the links under a MOC tag.")
+  (org-note-graph-add-provider 'members (org-note-graph-tag-members "MOC" "Members"))
   (org-note-graph-define-collection "Aliases" :requires '(:name)
                                     :doc "Alternative names of notes.")
   (org-note-graph-add-provider 'aliases
-   (org-note-graph-property-scanner #'org-note-graph-keywords "ALIASES" nil "Aliases"))
+   (org-note-graph-property-scanner #'org-note-graph-keywords "ALIASES" "Aliases"))
 
   (org-note-graph-define-collection "Definition" :requires '(:name)
                                     :doc "Inline Definitionen")
   (org-note-graph-add-provider 'definition-forward
                                (org-note-graph-tag-forward "Tags" "Definition" "Definition"))
   (org-note-graph-define-marker "def" :collection "Definition")
-  (org-note-graph-define-collection "dual" :requires '(:source :target)
-                                    :doc "Dual concepts, read in both directions.")
-  (org-note-graph-define-collection "impl" :requires '(:source :target)
-                                    :doc "Generalisierung un Spezialisierung")
+  (org-note-graph-define-collection "Absatz" :requires '(:name)
+                                    :doc "Benannte Absätze")
+  (org-note-graph-define-marker "par" :collection "Absatz" :passage t)
+  (org-note-graph-define-relation "dual" :doc "Dual concepts, read in both directions.")
+  (org-note-graph-define-relation "impl" :doc "Generalisierung un Spezialisierung")
+  (org-note-graph-define-relation "iso" :doc "Korrespondenz Isomorphie") ;TODO
+  (org-note-graph-define-relation "use" :doc "Terms used here and defined elsewhere.")
 
   ;; Project notes: their directories join the index through org-id's extra files.
   (setq org-id-extra-files
@@ -1175,21 +1186,32 @@ Nodes are files and ID headings, indexed by org-mem.
             (lambda () (add-to-list 'org-id-extra-files buffer-file-name)))
   (org-mem-updater-mode 1)
   (add-to-list 'my/popup-documentation-modes 'org-note-graph-view-mode)
+  (add-to-list 'my/popup-documentation-modes 'org-note-graph-context-view-mode)
   (add-to-list 'my/popup-documentation-names "\\`\\*Notes: ")
   (setq my/popup-root-function #'my/task-project-root))
+
+(defun my/notes-mark-definition ()
+  "Mark the word or region as a definition."
+  (interactive)
+  (org-note-graph-mark "def"))
+
+(defun my/notes-mark-paragraph ()
+  "Name the paragraph at point after the word or region."
+  (interactive)
+  (org-note-graph-mark "par"))
 
 (defun my/notes-alias-add (&optional remove)
   "Add an alias to the note at point; with a prefix, REMOVE one."
   (interactive "P")
   (org-note-graph-keywords-edit "ALIASES" "Aliases" remove))
 
-(defun my/notes-toggle-backlinks ()
-  "Toggle the backlink pane of the note in the editing window."
+(defun my/notes-toggle-context ()
+  "Toggle the context pane of the note in the editing window."
   (interactive)
   (my/popup-toggle
-   (lambda (buffer) (string-prefix-p "*Notes: ← " (buffer-name buffer)))
-   #'org-note-graph-backlinks))
-(keymap-set my/popup-command-map "n" #'my/notes-toggle-backlinks)
+   (lambda (buffer) (equal (buffer-name buffer) org-note-graph-context-buffer))
+   #'org-note-graph-context))
+(keymap-set my/popup-command-map "n" #'my/notes-toggle-context)
 
 (defvar-keymap my/notes-map
   "f" #'org-note-graph-find
@@ -1204,7 +1226,9 @@ Nodes are files and ID headings, indexed by org-mem.
   "T" #'org-note-graph-capture
   "C" #'org-id-get-create
   "I" #'org-note-graph-inspect
-  "m" #'org-note-graph-mark
+  "d" #'my/notes-mark-definition
+  "p" #'my/notes-mark-paragraph
+  "x" #'org-note-graph-extract
   "Q" #'org-note-graph-query
   "q" #'org-note-graph-query-find)
 (keymap-global-set "C-c n" my/notes-map)
@@ -1241,7 +1265,7 @@ Notes map: =B= browse, =S= notes, =A= associate, =D= import a DOI or arXiv paper
   (add-to-list 'my/task-extra-files my/reading-file)
   (org-note-graph-define-collection "Sources" :requires '(:name) :doc "Web and file sources of notes.")
   (org-note-graph-add-provider 'sources
-   (org-note-graph-property-scanner #'org-note-graph-keywords "SOURCE" nil "Sources"))
+   (org-note-graph-property-scanner #'org-note-graph-keywords "SOURCE" "Sources"))
   (keymap-set my/notes-map "B" #'citar-open)
   (keymap-set my/notes-map "S" #'citar-open-notes)
   (keymap-set my/notes-map "A" #'my/source-associate)
@@ -1288,7 +1312,6 @@ Notes map: =B= browse, =S= notes, =A= associate, =D= import a DOI or arXiv paper
 #+end_src
 
 * Integrations
-
 ** Mail
 
 Inbox and Sent are fetched with mbsync; credentials live in =~/.config/isync/=.
