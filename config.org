@@ -387,7 +387,7 @@ Side panes for documentation and processes; language sections register their REP
 
 ** Reading layout
 
-Org and EWW share margins, spacing and adaptive text size; =M-x olivetti-mode= elsewhere.
+Org and EWW share margins, spacing and a fitted text size: wide margins when alone, slim ones beside a pane or in a split; =M-x olivetti-mode= elsewhere.
 
 #+begin_src emacs-lisp
 (use-package olivetti

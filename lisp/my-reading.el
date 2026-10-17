@@ -18,15 +18,15 @@
   "Last fitted scale, excluding manual zoom.")
 
 (defun my/reading-scale-for-window (window)
-  "Choose a capped reading scale for WINDOW, allowing for its full width."
-  (if (and (eq window (frame-root-window window))
-           (integerp olivetti-body-width))
-      (max my/reading-scale
-           (min my/reading-max-scale
-                (/ (round (* 10 (/ (log (/ (* 0.65 (window-total-width window))
-                                           olivetti-body-width))
-                                   (log text-scale-mode-step))))
-                   10.0)))
+  "Choose a capped reading scale for WINDOW.  Text fills 65% of a window
+spanning its frame; beside a pane or in a split, 95%, leaving slim margins."
+  (if (integerp olivetti-body-width)
+      (let ((fill (if (eq window (frame-root-window window)) 0.65 0.95)))
+        (max my/reading-scale
+             (min my/reading-max-scale
+                  (/ (round (* 10 (/ (log (/ (* fill (window-total-width window)) olivetti-body-width))
+                                     (log text-scale-mode-step))))
+                     10.0))))
     my/reading-scale))
 
 (defun my/reading-update-scale (&optional _window)
