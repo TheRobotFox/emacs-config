@@ -1,7 +1,0 @@
-# -*- mode: snippet -*-
-# name: gq
-# key: gq
-# --
-\[\begin{gathered}
-$0
-\end{gathered}\]

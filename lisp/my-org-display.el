@@ -10,7 +10,6 @@
 (require 'org)
 (require 'org-element)
 (require 'org-fold)
-(require 'ox)
 (require 'face-remap)
 
 ;;;; Typography and images
@@ -18,6 +17,9 @@
 (defun my/org-typography ()
   "Apply note typography without changing fonts in other buffers."
   (setq-local line-spacing 0.12)
+  ;; Air below the first and last line of a block.
+  (setq-local font-lock-extra-managed-props (cons 'line-height font-lock-extra-managed-props))
+  (font-lock-add-keywords nil '(("^[ \t]*#\\+\\(?:begin\\|end\\)_.*\\(\n\\)" 1 '(face nil line-height 1.5))) t)
   (add-hook 'text-scale-mode-hook #'my/org-scale-inline-images nil t))
 
 (defun my/org-scale-image (image)
@@ -72,19 +74,26 @@ Use as a return filter on Org's inline image creation."
   "Source block languages folded by default."
   :type '(repeat string) :group 'org)
 (defcustom my/org-folded-blocks '("beispiel" "proof")
-  "Special block types folded by default."
+  "Special block types folded by default under headings.  At a note's top
+level they stay open: there a proof is the note's content, as in a theorem
+note."
   :type '(repeat string) :group 'org)
 
 (defun my/org--block-fold-state (element)
   "Return `hide', `off', or nil for ELEMENT's initial folding."
-  (pcase (org-export-read-attribute :attr_org element :fold)
+  ;; Read as Org's image previews read :width: `org-export-read-attribute'
+  ;; would load the export framework and its backends with the first note.
+  (pcase (let ((attributes (string-join (org-element-property :attr_org element) " ")))
+           (and (string-match ":fold[ \t]+\\([^ \t]+\\)" attributes)
+                (match-string 1 attributes)))
     ("yes" 'hide)
     ("no" 'off)
     (_ (when (pcase (org-element-type element)
                ('src-block
                 (member (org-element-property :language element) my/org-folded-languages))
                ('special-block
-                (member (downcase (org-element-property :type element)) my/org-folded-blocks)))
+                (and (member (downcase (org-element-property :type element)) my/org-folded-blocks)
+                     (org-element-lineage element '(headline)))))
          'hide))))
 
 (defun my/org-fold-note-blocks ()
@@ -100,18 +109,18 @@ override its initial visibility.  Other blocks are left alone by default."
         (when state (org-fold-hide-block-toggle state nil element)))))))
 
 (defvar-local my/org--startup-visibility-pending nil
-  "Whether background loading skipped Org's initial visibility setup.")
+  "Whether background loading skipped Org's startup in this buffer.")
 
 (defun my/org--fold-note-blocks-on-display (window)
   "Apply pending startup visibility and block folding on first display in WINDOW."
   ;; Window change hooks can also run in the buffer being switched away from.
   (when (eq (window-buffer window) (current-buffer))
     (when my/org--startup-visibility-pending
-      (org-with-wide-buffer
-       (org-cycle-set-startup-visibility)
-       (unless (org-before-first-heading-p)
-         (org-fold-show-context 'agenda)))
-      (setq my/org--startup-visibility-pending nil))
+      ;; Agenda loading skipped all of Org's startup: indentation, visibility
+      ;; and previews.  The restart reruns it and clears the flag.
+      (let ((inhibit-message t)) (org-mode-restart))
+      (unless (org-before-first-heading-p)
+        (org-fold-show-context 'agenda)))
     (my/org-fold-note-blocks)
     (remove-hook 'window-buffer-change-functions
                  #'my/org--fold-note-blocks-on-display t)))

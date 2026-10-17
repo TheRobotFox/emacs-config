@@ -37,6 +37,7 @@
     (todo "NEXT" ((org-agenda-overriding-header "Next actions")))
     (todo "TODO" ((org-agenda-overriding-header "Backlog")))
     (todo "WAIT" ((org-agenda-overriding-header "Waiting")))
+    (todo "QUESTION" ((org-agenda-overriding-header "Questions")))
     (todo "HOLD|IDEA|DISSOLVE" ((org-agenda-overriding-header "Deferred"))))
   "Org block-agenda specification rendered by `my/project-task-agenda'."
   :type 'sexp)
@@ -61,7 +62,8 @@
 (defun my/task-project-root (&optional prompt)
   "Resolve current project context, optionally PROMPT for another project.
 Personal notes do not inherit the notes repository as their project."
-  (let ((root (when (or project-current-directory-override (not (my/task--note-file-p)))
+  (let ((root (when (or project-current-directory-override
+                        (not (my/task--note-file-p (or buffer-file-name default-directory))))
                 (when-let* ((project (project-current nil))) (project-root project)))))
     (when (and (not root) prompt)
       (setq root (funcall project-prompter)))
@@ -121,24 +123,14 @@ When NODE is non-nil, assign a file ID for stable links."
   (let ((origin (org-capture-get :original-buffer)))
     (and (buffer-live-p origin) origin)))
 
+(defun my/task-inbox-file ()
+  "Return the notes inbox."
+  (expand-file-name "inbox.org" my/notes-directory))
+
 (defun my/task-inbox-target ()
   "Position capture in the notes inbox."
-  (set-buffer (my/task--prepare-file
-               (expand-file-name "inbox.org" my/notes-directory) "Inbox" t))
+  (set-buffer (my/task--prepare-file (my/task-inbox-file) "Inbox" t))
   (my/task--tasks-heading))
-
-(defun my/task-project-context-p ()
-  "Whether the current buffer has an available project for capture."
-  (condition-case nil
-      (and (my/task-project-root) t)
-    (user-error nil)))
-
-(defun my/task-project-target ()
-  "Position capture under Tasks in the originating project's note."
-  (let* ((origin (my/task--origin))
-         (root (when origin (with-current-buffer origin (my/task-project-root)))))
-    (unless root (user-error "No project in the capture context"))
-    (my/task--project-target root)))
 
 (defun my/task-note-target ()
   "Capture under the originating note's heading, else in a picked note."
@@ -161,7 +153,6 @@ When NODE is non-nil, assign a file ID for stable links."
   "Capture a task under Tasks in the current or selected project's note."
   (interactive)
   (let* ((root (my/task-project-root t))
-         (org-capture-templates-contexts nil)
          (org-capture-templates
           `(("p" "Project task" entry
              (function ,(lambda () (my/task--project-target root)))
@@ -193,13 +184,20 @@ When NODE is non-nil, assign a file ID for stable links."
   (interactive)
   (pop-to-buffer-same-window (my/project-note-buffer (my/task-project-root t))))
 
+(defun my/project-notes ()
+  "Return the existing notes of the known local projects."
+  (cl-loop for root in (project-known-project-roots)
+           for note = (and (not (file-remote-p root)) (file-directory-p root) (my/project-note-path root))
+           when (and note (file-exists-p note)) collect note))
+
+(defun my/project-note-index ()
+  "Let org-id, and so the note index, know the project note in this buffer."
+  (add-to-list 'org-id-extra-files buffer-file-name))
+
 (defun my/task-agenda-files ()
   "Return the note graph's task files, the extra files and project notes."
   (org-note-graph-ensure)
-  (let ((files (append (org-note-graph-task-files) my/task-extra-files
-                       (cl-loop for root in (project-known-project-roots)
-                                when (and (not (file-remote-p root)) (file-directory-p root))
-                                collect (my/project-note-path root)))))
+  (let ((files (append (org-note-graph-task-files) my/task-extra-files (my/project-notes))))
     (delete-dups
      (mapcar #'file-truename
              (seq-filter #'my/task--available-file-p (mapcar #'expand-file-name files))))))
@@ -208,19 +206,11 @@ When NODE is non-nil, assign a file ID for stable links."
   "Refresh task discovery before opening the agenda."
   (setq org-agenda-files (my/task-agenda-files)))
 
-(defun my/task--inbox-p ()
-  "Whether the current entry is in the general notes inbox."
-  (and buffer-file-name
-       (equal (file-truename buffer-file-name)
-              (file-truename (expand-file-name "inbox.org" my/notes-directory)))))
-
-(defun my/task-skip-outside-inbox ()
-  "Skip non-inbox files in the review's inbox block."
-  (unless (my/task--inbox-p) (point-max)))
-
-(defun my/task-skip-inbox ()
-  "Skip the inbox, whose tasks already appear in their own review block."
-  (when (my/task--inbox-p) (point-max)))
+(defun my/task-title-category ()
+  "Name the note's agenda rows after its title; a #+category keyword still wins.
+For `org-mode-hook'."
+  (when-let* ((title (org-get-title)))
+    (setq-local org-category (truncate-string-to-width title 15 nil nil "…"))))
 
 (defun my/task-agenda-appearance ()
   "Give agenda rows readable spacing and a consistently aligned font."

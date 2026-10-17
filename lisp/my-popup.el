@@ -28,7 +28,7 @@
 (defcustom my/popup-documentation-names '("\\` *\\*eldoc\\*")
   "Buffer name regexps of documentation panes, for buffers shown before their mode."
   :type '(repeat regexp))
-(defcustom my/popup-process-modes '(comint-mode eshell-mode vterm-mode term-mode)
+(defcustom my/popup-process-modes '(comint-mode eshell-mode term-mode)
   "Major modes of shell and language interaction buffers."
   :type '(repeat symbol))
 (defcustom my/popup-shell-modes '(eshell-mode shell-mode term-mode vterm-mode)
@@ -44,9 +44,10 @@ project.  It may signal a `user-error' explaining how to start the REPL."
   "Function returning the current buffer's root directory, or nil."
   :type 'function)
 
-(defvar-local my/popup-project-root nil)
+(defvar-local my/popup--root nil
+  "Root directory of the source a supporting buffer was first shown for.")
 ;; Eldoc refreshes its buffer with `special-mode', which resets local variables.
-(put 'my/popup-project-root 'permanent-local t)
+(put 'my/popup--root 'permanent-local t)
 (defvar eshell-buffer-name)
 
 (defun my/popup-project-root ()
@@ -56,13 +57,13 @@ project.  It may signal a `user-error' explaining how to start the REPL."
 (defun my/popup-documentation-p (buffer)
   "Whether BUFFER contains documentation rather than interactive output."
   (with-current-buffer buffer
-    (or (apply #'derived-mode-p my/popup-documentation-modes)
+    (or (derived-mode-p my/popup-documentation-modes)
         (seq-some (lambda (regexp) (string-match-p regexp (buffer-name)))
                   my/popup-documentation-names))))
 
 (defun my/popup-process-p (buffer)
   "Whether BUFFER is a shell or language interaction buffer."
-  (with-current-buffer buffer (apply #'derived-mode-p my/popup-process-modes)))
+  (with-current-buffer buffer (derived-mode-p my/popup-process-modes)))
 
 (defun my/popup-reference-p (buffer)
   "Classify supporting buffers, including modes derived from the configured ones."
@@ -86,20 +87,17 @@ project.  It may signal a `user-error' explaining how to start the REPL."
   (let ((source (my/popup-source-window)))
     (cons source (with-current-buffer (window-buffer source) (my/popup-root)))))
 
-(defun my/popup--choose-side (wide-p columns existing-side)
-  "Choose a side from WIDE-P, editing COLUMNS, and EXISTING-SIDE."
-  (or existing-side (if (and wide-p (= columns 1)) 'right 'bottom)))
-
 (defun my/popup-side ()
-  "Choose a stable side based on the existing supporting area or editing layout."
+  "Choose the side of the existing supporting panes, else the right of a single
+editing column in a wide frame, else the bottom."
   (let* ((windows (window-list nil 'no-mini))
          (support (cl-find-if (lambda (win) (window-parameter win 'my/popup-pane)) windows))
          (editors (cl-remove-if (lambda (win) (window-parameter win 'window-side)) windows))
          (columns (delete-dups (mapcar (lambda (win) (car (window-edges win))) editors))))
-    (my/popup--choose-side
-     (>= (frame-width) my/popup-right-min-width)
-     (length columns)
-     (and support (window-parameter support 'window-side)))))
+    (or (and support (window-parameter support 'window-side))
+        (if (and (>= (frame-width) my/popup-right-min-width) (= (length columns) 1))
+            'right
+          'bottom))))
 
 (defun my/popup--display (buffer origin side &optional alist)
   "Place BUFFER on SIDE with ORIGIN, without changing project association."
@@ -125,9 +123,9 @@ Documentation uses slot -1; processes and other output share slot 0."
   (pcase-let ((`(,source . ,root) (my/popup--context)))
     (with-current-buffer buffer
       (cond ((my/popup-documentation-p buffer)
-             (setq-local my/popup-project-root root))
-            ((not my/popup-project-root)
-             (setq-local my/popup-project-root
+             (setq-local my/popup--root root))
+            ((not my/popup--root)
+             (setq-local my/popup--root
                          (if (my/popup-process-p buffer) (my/popup-root) root)))))
     (my/popup--display buffer source (my/popup-side) alist)))
 
@@ -196,7 +194,7 @@ Restore the previous layout if the requested side cannot accommodate them."
 (defun my/popup-root ()
   "Return the source project's root, falling back to its current directory."
   (let ((root (expand-file-name
-               (or my/popup-project-root
+               (or my/popup--root
                    (funcall my/popup-root-function)
                    default-directory))))
     (file-name-as-directory (if (file-remote-p root) root (file-truename root)))))
@@ -210,7 +208,7 @@ Outside a project, use a shell associated with the source directory."
                     (lambda (buf)
                       (with-current-buffer buf
                         (and (derived-mode-p 'eshell-mode)
-                             (equal my/popup-project-root root))))
+                             (equal my/popup--root root))))
                     (buffer-list))))
     (if existing (my/popup-select existing)
       (require 'eshell)
@@ -219,9 +217,8 @@ Outside a project, use a shell associated with the source directory."
               (format "*eshell:%s:%s*"
                       (file-name-nondirectory (directory-file-name root))
                       (substring (secure-hash 'sha1 root) 0 8)))
-             (display-buffer-overriding-action '(my/popup-display))
-             (buffer (eshell)))
-        (with-current-buffer buffer (setq-local my/popup-project-root root))))))
+             (display-buffer-overriding-action '(my/popup-display)))
+        (eshell)))))
 
 (defun my/popup--associated-repl ()
   "Return the source buffer's REPL through `my/popup-repl-functions'."
@@ -243,7 +240,7 @@ Start language runtimes with their normal package commands first."
                               (lambda (buf)
                                 (and (my/popup-process-p buf)
                                      (with-current-buffer buf
-                                       (and (not (apply #'derived-mode-p my/popup-shell-modes))
+                                       (and (not (derived-mode-p my/popup-shell-modes))
                                             (equal root (my/popup-root))))))
                               (buffer-list))))
                         (cond ((null candidates)
@@ -251,7 +248,7 @@ Start language runtimes with their normal package commands first."
                               ((null (cdr candidates)) (car candidates))
                               (t (get-buffer (completing-read "Project REPL: "
                                                               (mapcar #'buffer-name candidates) nil t)))))))))
-    (with-current-buffer buffer (setq-local my/popup-project-root root))
+    (with-current-buffer buffer (setq-local my/popup--root root))
     (my/popup-select buffer)))
 
 (defun my/popup-eldoc ()
@@ -263,9 +260,8 @@ New documentation requests use Eldoc's normal asynchronous display pipeline."
          (window (and buffer (get-buffer-window buffer (selected-frame)))))
     (if window (quit-window nil window)
       (with-selected-window source
-        (if buffer
-            (progn (my/popup-display buffer) (eldoc t))
-          (eldoc t))))))
+        (when buffer (my/popup-display buffer))
+        (eldoc t)))))
 
 (provide 'my-popup)
 ;;; my-popup.el ends here

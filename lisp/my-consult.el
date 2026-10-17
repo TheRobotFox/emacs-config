@@ -45,7 +45,8 @@
 This textual search also matches markers outside comments and strings."
   (interactive)
   (consult-ripgrep (project-root (project-current t))
-                   "#\\b(TODO|FIXME|NOTE|HACK|XXX)\\b#"))
+                   ;; Consult reads the input as an Emacs regexp.
+                   "#\\b\\(TODO\\|FIXME\\|NOTE\\|HACK\\|XXX\\)\\b#"))
 
 (defun my/consult-project-file (prompt files &optional predicate history defaults)
   "Read from project FILES with Consult previews.

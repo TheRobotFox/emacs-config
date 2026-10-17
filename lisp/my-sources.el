@@ -2,7 +2,7 @@
 
 ;;; Commentary:
 ;; A source is a web page, a PDF or a bibliography entry.  The reading queue
-;; (`my/reading-file') holds TODO items pointing at sources; a source note in
+;; (`my/source-queue-file') holds TODO items pointing at sources; a source note in
 ;; the note graph holds thoughts about one.  Notes are created on demand: when
 ;; reading starts with a prefix argument, or at the first captured thought.
 ;; Papers keep their BibTeX metadata in Citar; their notes carry CITEKEY and
@@ -21,6 +21,7 @@
 (declare-function eww "eww" (url &optional new-buffer buffer))
 (declare-function pdf-view-active-region-p "pdf-view")
 (declare-function pdf-view-active-region-text "pdf-view")
+(declare-function image-mode-window-get "image-mode" (prop &optional winprops))
 (declare-function bibtex-beginning-of-entry "bibtex")
 (declare-function bibtex-clean-entry "bibtex" (&optional new-key called-by-reformat))
 (declare-function bibtex-key-in-head "bibtex" (&optional empty))
@@ -38,8 +39,8 @@
 (defcustom my/source-directory (expand-file-name "sources/" org-note-graph-capture-directory)
   "Directory for source notes."
   :type 'directory)
-(defcustom my/reading-file (expand-file-name "reading.org" org-directory)
-  "Reading queue: sources to read, as TODO items tagged reading."
+(defcustom my/source-queue-file (expand-file-name "reading.org" org-directory)
+  "Reading queue: sources to read, as TODO items."
   :type 'file)
 
 ;;;; Resources
@@ -148,13 +149,19 @@ open-access PDF when Unpaywall knows one.  A URL stays a URL."
                                              (lambda () (my/source--open-access-pdf doi)))))
           ((my/source-url-p text) (cons 'url text)))))
 
+(defun my/source--read-reference (prompt)
+  "Read a URL, DOI or arXiv reference with PROMPT; M-n offers a copied one."
+  (let ((copied (string-trim (or (ignore-errors (current-kill 0 t)) ""))))
+    (string-trim
+     (read-from-minibuffer prompt nil nil nil nil
+                           (and (or (my/source-url-p copied) (my/source--doi copied)
+                                    (my/source--arxiv-id copied))
+                                copied)))))
+
 (defun my/source-add (text)
   "Import the paper TEXT names, a DOI or an arXiv reference."
-  (interactive
-   (let ((copied (string-trim (or (ignore-errors (current-kill 0 t)) ""))))
-     (list (read-string "DOI or arXiv reference: "
-                        (and (or (my/source--doi copied) (my/source--arxiv-id copied)) copied)))))
-  (unless (eq (car-safe (my/source-import (string-trim text))) 'citekey)
+  (interactive (list (my/source--read-reference "DOI or arXiv reference: ")))
+  (unless (eq (car-safe (my/source-import text)) 'citekey)
     (user-error "Not a DOI or arXiv reference: %s" text)))
 
 (defun my/source-new-entry ()
@@ -173,6 +180,10 @@ Fill the fields, then C-c C-c cleans the entry and generates its key."
                                       (gethash key library)))
               (hash-table-keys library))))
 
+(defun my/source--document-resource (file)
+  "Return the resource of the document FILE: its citekey, else the file."
+  (if-let* ((key (my/source--file-citekey file))) (cons 'citekey key) (cons 'file file)))
+
 (defun my/source-entry-resource ()
   "Return the resource described by the Org entry at point, or nil."
   (let ((key (org-entry-get nil "CITEKEY"))
@@ -190,9 +201,7 @@ Fill the fields, then C-c C-c cleans the entry and generates its key."
   "Return the resource of the current buffer.
 A page in EWW, a PDF, a queue item or agenda line, or a source note."
   (cond ((derived-mode-p 'eww-mode) (cons 'url (eww-current-url)))
-        ((derived-mode-p 'pdf-view-mode)
-         (if-let* ((key (my/source--file-citekey buffer-file-name))) (cons 'citekey key)
-           (cons 'file buffer-file-name)))
+        ((derived-mode-p 'pdf-view-mode) (my/source--document-resource buffer-file-name))
         ((derived-mode-p 'org-agenda-mode)
          (org-agenda-with-point-at-orig-entry nil (my/source-entry-resource)))
         ((derived-mode-p 'org-mode)
@@ -230,9 +239,8 @@ A page in EWW, a PDF, a queue item or agenda line, or a source note."
     (_ "paper")))
 
 (defun my/source-note-p (node)
-  "Whether NODE is a source note rather than a queue item."
-  (and (not (org-mem-entry-subtree-p node))
-       (not (file-equal-p (org-mem-entry-file node) my/reading-file))))
+  "Whether NODE is a source note rather than a queue item, a heading."
+  (not (org-mem-entry-subtree-p node)))
 
 (defun my/source-notes (&optional keys)
   "Return Citar's KEY-to-files map, restricted to KEYS when supplied."
@@ -300,24 +308,24 @@ A page in EWW, a PDF, a queue item or agenda line, or a source note."
 
 ;;;; Reading queue
 
-(defun my/reading--map (function)
+(defun my/source--queue-map (function)
   "Call FUNCTION at each open queue item and return its non-nil results."
-  (with-current-buffer (find-file-noselect my/reading-file)
+  (with-current-buffer (find-file-noselect my/source-queue-file)
     (org-with-wide-buffer
      (delq nil (org-map-entries function "/!TODO|NEXT" 'file)))))
 
-(defun my/reading--items ()
+(defun my/source--queue-items ()
   "Return (STATE . MARKER) for open queue items, in-progress ones first."
-  (sort (my/reading--map (lambda () (cons (org-get-todo-state) (point-marker))))
+  (sort (my/source--queue-map (lambda () (cons (org-get-todo-state) (point-marker))))
         (lambda (a b) (and (equal (car a) "NEXT") (not (equal (car b) "NEXT"))))))
 
-(defun my/reading--item-for (resource)
+(defun my/source--queue-item (resource)
   "Return a marker at the queue item describing RESOURCE, or nil."
-  (car (my/reading--map (lambda () (and (equal (my/source-entry-resource) resource) (point-marker))))))
+  (car (my/source--queue-map (lambda () (and (equal (my/source-entry-resource) resource) (point-marker))))))
 
-(defun my/reading--select-item ()
+(defun my/source--select-queue-item ()
   "Choose an open queue item and return a marker at it."
-  (let* ((items (my/reading--items))
+  (let* ((items (my/source--queue-items))
          (candidates (mapcar (lambda (item)
                                (cons (org-with-point-at (cdr item)
                                        (format "%s %s" (car item) (org-get-heading t t t t)))
@@ -326,42 +334,48 @@ A page in EWW, a PDF, a queue item or agenda line, or a source note."
     (unless candidates (user-error "The reading queue is empty"))
     (cdr (assoc (completing-read "Read: " candidates nil t) candidates))))
 
-(defun my/reading--item-at-point ()
+(defun my/source--queue-item-at-point ()
   "Return a marker at the queue item at point, selecting one elsewhere."
   (cond ((derived-mode-p 'org-agenda-mode)
          (or (org-get-at-bol 'org-marker) (user-error "No item here")))
-        ((and (derived-mode-p 'org-mode) (file-equal-p (or buffer-file-name "") my/reading-file)
+        ((and (derived-mode-p 'org-mode) (file-equal-p (or buffer-file-name "") my/source-queue-file)
               (not (org-before-first-heading-p)))
          (save-excursion (org-back-to-heading t) (point-marker)))
-        (t (my/reading--select-item))))
+        (t (my/source--select-queue-item))))
 
-(defun my/reading-capture-resource ()
-  "Resolve the queue capture's source once.
-The clipboard supplies a URL, DOI or arXiv reference; otherwise pick an entry."
+(defun my/source-capture-resource ()
+  "Resolve the queue capture's source once: the EWW page or PDF being read,
+else a URL, DOI or arXiv reference read from the minibuffer, else an entry."
   (or (org-capture-get :note-source)
-      (let* ((text (string-trim (or (ignore-errors (current-kill 0)) "")))
-             (resource (or (condition-case err (my/source-import text)
-                             (error (user-error "Import failed: %s. Add the entry with C-c r b, then capture again"
-                                                (error-message-string err))))
-                           (cons 'citekey (citar-select-ref)))))
+      (let ((resource
+             (or (with-current-buffer (org-capture-get :original-buffer)
+                   (and (derived-mode-p 'eww-mode 'pdf-view-mode) (my/source-current-resource)))
+                 (let ((text (my/source--read-reference
+                              "URL, DOI or arXiv reference (empty for a bibliography entry): ")))
+                   (if (string-empty-p text)
+                       (cons 'citekey (citar-select-ref))
+                     (or (condition-case err (my/source-import text)
+                           (error (user-error "Import failed: %s. Add the entry with C-c r b, then capture again"
+                                              (error-message-string err))))
+                         (user-error "Not a URL, DOI or arXiv reference: %s" text)))))))
         (org-capture-put :note-source resource)
         resource)))
 
-(defun my/reading-capture-title ()
+(defun my/source-capture-title ()
   "Return the queue capture's title, for the template."
-  (my/source-resource-title (my/reading-capture-resource)))
+  (my/source-resource-title (my/source-capture-resource)))
 
-(defun my/reading-capture-properties ()
+(defun my/source-capture-properties ()
   "Return the queue capture's property line, for the template."
-  (pcase (my/reading-capture-resource)
+  (pcase (my/source-capture-resource)
     (`(citekey . ,key) (format ":CITEKEY: %s" key))
     (`(,_ . ,value) (format ":SOURCE: %s" value))))
 
-(defun my/reading-start (&optional create-note)
+(defun my/source-start (&optional create-note)
   "Start reading the queue item at point: mark it NEXT and open its source.
 With CREATE-NOTE, open or create its note as well."
   (interactive "P")
-  (let* ((marker (my/reading--item-at-point))
+  (let* ((marker (my/source--queue-item-at-point))
          (resource (org-with-point-at marker
                      (or (my/source-entry-resource) (user-error "This item names no source"))))
          (title (org-with-point-at marker (org-get-heading t t t t))))
@@ -370,13 +384,13 @@ With CREATE-NOTE, open or create its note as well."
     (when-let* ((node (if create-note (my/source-ensure-note resource title) (my/source-note resource))))
       (display-buffer (find-file-noselect (org-mem-entry-file node))))))
 
-(defun my/reading-finish ()
+(defun my/source-finish ()
   "Finish the source being read: mark its queue item DONE and record a verdict.
 The verdict goes into the source note, or onto the queue item without one."
   (interactive)
   (let* ((resource (or (my/source-current-resource)
-                       (org-with-point-at (my/reading--select-item) (my/source-entry-resource))))
-         (marker (or (my/reading--item-for resource) (user-error "No open queue item for this source")))
+                       (org-with-point-at (my/source--select-queue-item) (my/source-entry-resource))))
+         (marker (or (my/source--queue-item resource) (user-error "No open queue item for this source")))
          (verdict (string-trim (read-string "Verdict (empty to skip): ")))
          (node (my/source-note resource)))
     (org-with-point-at marker (org-todo "DONE"))
@@ -399,20 +413,32 @@ The verdict goes into the source note, or onto the queue item without one."
 (defun my/source-noter-notes (document)
   "Return the source note annotating DOCUMENT, for org-noter's notes lookup.
 Noter otherwise only considers notes named after the document."
-  (when-let* ((resource (if-let* ((key (my/source--file-citekey document))) (cons 'citekey key)
-                          (cons 'file (expand-file-name document))))
-              (node (my/source-note resource)))
+  (when-let* ((node (my/source-note (my/source--document-resource (expand-file-name document)))))
     (org-mem-entry-file node)))
+
+(defun my/source-noter-prepare (_arg document)
+  "Give DOCUMENT a source note naming it, before org-noter looks for notes.
+For `org-noter-create-session-from-document-hook'; returns nil, so org-noter
+goes on and finds the note instead of creating a file beside the document."
+  (let* ((document (expand-file-name document))
+         (node (my/source-ensure-note (my/source--document-resource document))))
+    (with-current-buffer (find-file-noselect (org-mem-entry-file node))
+      (org-with-wide-buffer
+       (goto-char (point-min))
+       (unless (org-entry-get nil "NOTER_DOCUMENT")
+         (org-entry-put nil "NOTER_DOCUMENT" (file-relative-name document))
+         (save-buffer))))
+    nil))
 
 ;;;; Capture into the source note
 
-(defun my/reading-note-target ()
+(defun my/source-note-target ()
   "Position capture at the end of the current source's note, creating it if needed."
   (let* ((origin (org-capture-get :original-buffer))
          (resource (with-current-buffer origin
                      (or (my/source-current-resource) (user-error "No source in this buffer"))))
          (title (with-current-buffer origin
-                  (or (when-let* ((marker (my/reading--item-for resource)))
+                  (or (when-let* ((marker (my/source--queue-item resource)))
                         (org-with-point-at marker (org-get-heading t t t t)))
                       (my/source-resource-title resource))))
          (node (my/source-ensure-note resource title)))
@@ -420,7 +446,16 @@ Noter otherwise only considers notes named after the document."
     (widen)
     (goto-char (point-max))))
 
-(defun my/reading-selection ()
+(defun my/source-location ()
+  "Return where a captured thought or quote comes from: the PDF's page, else
+the link to the origin, for the capture templates."
+  (with-current-buffer (org-capture-get :original-buffer)
+    (if (derived-mode-p 'pdf-view-mode)
+        ;; pdf-view keeps the page in image-mode's window state.
+        (format "p. %d" (image-mode-window-get 'page))
+      (org-capture-get :annotation))))
+
+(defun my/source-selection ()
   "Return the text selected in the capture's origin, for quote templates."
   (let ((origin (org-capture-get :original-buffer)))
     (string-trim

@@ -1,9 +1,13 @@
 ;;; my-latex-preview.el --- LaTeX previews in code comments -*- lexical-binding: t; -*-
 
 ;;; Commentary:
-;; Implementation helpers; settings and hooks live in config.org.
+;; preview-auto in code comments: each buffer previews against a copy of the
+;; shared preamble, latex/preview-master.tex, in the temporary directory, with
+;; settings that keep previews to comments and out of the way of point.
 
 ;;; Code:
+(declare-function preview-auto-mode "preview-auto" (&optional arg))
+(defvar TeX-master)
 
 (defun my/latex-comment-preview-p ()
   "Check comment syntax without disturbing preview-auto's delimiter match."
@@ -17,9 +21,8 @@
   (unless (and (local-variable-p 'TeX-master) (stringp TeX-master))
     (let* ((directory
             (expand-file-name
-             (concat ".cache/latex-comments/"
-                     (secure-hash 'sha1 (or buffer-file-name (buffer-name))) "/")
-             user-emacs-directory))
+             (concat "latex-comments/" (secure-hash 'sha1 (or buffer-file-name (buffer-name))) "/")
+             temporary-file-directory))
            (master (expand-file-name "master.tex" directory)))
       (make-directory directory t)
       (copy-file (expand-file-name "latex/preview-master.tex" user-emacs-directory)

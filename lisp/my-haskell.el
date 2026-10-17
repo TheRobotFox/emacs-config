@@ -20,14 +20,18 @@
 
 ;;;; Sessions
 
+(defun my/haskell--live-p (session)
+  "Whether SESSION has a running GHCi process."
+  (let* ((state (and session (haskell-session-process session)))
+         (process (and state (haskell-process-process state))))
+    (and (processp process) (process-live-p process))))
+
 (defun my/haskell-ensure-process-for-load (&rest _)
   "Ensure the current Haskell session has a running process before loading.
 A retained session can have missing process state or an exited GHCi child.
 Rebuild broken state with an empty queue so stale commands are not replayed."
-  (let* ((session (haskell-session))
-         (state (haskell-session-process session))
-         (process (and state (haskell-process-process state))))
-    (unless (and (processp process) (process-live-p process))
+  (let ((session (haskell-session)))
+    (unless (my/haskell--live-p session)
       ;; Initialize state before starting: the upstream restart path writes
       ;; to it if an orphaned process still exists under the session name.
       (haskell-session-set-process session
@@ -43,10 +47,8 @@ Never create one: `haskell-session-interactive-buffer' would start and select
 a REPL even when the session has no process."
   (when (fboundp 'haskell-session-maybe)
     (let* ((session (haskell-session-maybe))
-           (state (and session (haskell-session-process session)))
-           (process (and state (haskell-process-process state)))
            (buffer (and session (haskell-session-get session 'interactive-buffer))))
-      (unless (and (processp process) (process-live-p process) (buffer-live-p buffer))
+      (unless (and (my/haskell--live-p session) (buffer-live-p buffer))
         (user-error "No running GHCi session; start it with M-x haskell-process-load-file"))
       buffer)))
 

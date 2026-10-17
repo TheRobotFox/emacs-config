@@ -1,7 +1,0 @@
-# -*- mode: snippet -*-
-# name: aq
-# key: aq
-# --
-\[\begin{aligned}
-$0
-\end{aligned}\]

@@ -143,7 +143,6 @@ ENABLE is non-nil."
 
 (define-minor-mode my/math-symbols-mode
   "Toggle the notation declared by `my/math-set' in this buffer.
-For a project, enable this in its .dir-locals.el via a mode entry.
 The ordinary `prettify-symbols-mode' command toggles all symbol display."
   :lighter " Math"
   (my/prettify-setup my/math-symbols-mode))
