@@ -26,7 +26,8 @@
 /.org-id-locations
 /org-roam.db
 
-# Local only: tests, downloaded docs, parked experiments
+# Local only: settings, tests, downloaded docs, parked experiments
+/config-local.el
 /tests/
 /devdocs/
 /experiments/
