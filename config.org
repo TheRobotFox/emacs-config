@@ -303,6 +303,8 @@ Side panes for documentation and processes; language sections register their REP
    ("M-g M" . consult-global-mark)
    ("M-g m" . consult-mark)
 
+   ("M-y" . consult-yank-from-kill-ring)
+   
    ("M-s f" . consult-ripgrep)
    ("M-s o" . consult-line)
    ("M-s O" . consult-line-multi)
@@ -743,45 +745,25 @@ Goals open in the Eldoc pane, which then follows point; =M-o d= toggles it.
 * Org
 
 ** Package
-
-The tecosaur fork supplies the live LaTeX preview API; Emacs's bundled Org does not yet.
-
+Org savanna branch
 #+begin_src emacs-lisp
-(use-package org
-  :demand t
-  :straight `(org
-              :fork (:host nil
-                           :repo "https://git.tecosaur.net/tec/org-mode.git"
-                           :branch "dev"
-                           :remote "tecosaur")
-              :files (:defaults "etc")
-              :build t
-              :pre-build
-              (with-temp-file "org-version.el"
-                (require 'lisp-mnt)
-                (let ((version
-                       (with-temp-buffer
-                         (insert-file-contents "lisp/org.el")
-                         (lm-header "version")))
-                      (git-version
-                       (string-trim
-                        (with-temp-buffer
-                          (call-process "git" nil t nil "rev-parse" "--short" "HEAD")
-                          (buffer-string)))))
-                  (insert
-                   (format "(defun org-release () \"The release version of Org.\" %S)\n" version)
-                   (format "(defun org-git-version () \"The truncate git commit hash of Org mode.\" %S)\n" git-version)
-                   "(provide 'org-version)\n")))
-              :pin nil))
+  (use-package org
+    :demand t
+    :straight (org :host nil
+                   :repo "https://git.savannah.gnu.org/git/emacs/org-mode.git"
+                   :branch "main"
+                   :local-repo "org"
+                   :files ("lisp/*.el" "lisp/org-version.el" "lisp/org-loaddefs.el" "etc")
+                   :build t))
+  
+  (use-package org-eldoc
+    :straight org-contrib
+    :after org)
 
-(use-package org-eldoc
-  :straight org-contrib
-  :after org)
-
-(setopt org-startup-folded 'fold
-        ;; Indentation by heading level is displayed, not written.
-        org-startup-indented t)
-(setf (alist-get 'file org-link-frame-setup) 'find-file)
+  (setopt org-startup-folded 'fold
+          ;; Indentation by heading level is displayed, not written.
+          org-startup-indented t)
+  (setf (alist-get 'file org-link-frame-setup) 'find-file)
 #+end_src
 
 ** Writing
@@ -837,6 +819,7 @@ Variable pitch; diagram sources fold, proof and Beispiel blocks fold under headi
                       :inherit (list (intern (format "outline-%d" (car level))) 'variable-pitch)
                       :weight 'bold :height (cdr level)))
 
+(require 'my-org-brackets)
 (use-package org-modern
   :after org
   :custom
@@ -847,10 +830,12 @@ Variable pitch; diagram sources fold, proof and Beispiel blocks fold under headi
   (org-modern-block-name '(("proof" "Beweis." "□") (t . t)))
   :hook
   (org-mode . org-modern-mode)
+  (org-mode . my/org-brackets-mode)
   (org-agenda-finalize . org-modern-agenda)
   :config
   ;; Block names read as text, not as the code font of block lines.
   (set-face-attribute 'org-modern-block-name nil :inherit '(variable-pitch default) :slant 'italic))
+
 #+end_src
 
 *** Links and images
