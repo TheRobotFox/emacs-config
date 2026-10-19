@@ -783,6 +783,7 @@ Org savanna branch
 *** Display
 
 Variable pitch; diagram sources fold, proof and Beispiel blocks fold under headings (=#+ATTR_ORG: :fold yes/no=).
+Blocks get brackets in the indentation (=my-org-brackets=); =M-x my/org-brackets-toggle-style= compares org-modern's fringe ones.
 
 #+begin_src emacs-lisp
 (setopt org-tags-column 0
@@ -840,13 +841,15 @@ Variable pitch; diagram sources fold, proof and Beispiel blocks fold under headi
 
 *** Links and images
 
-Images follow text zoom; width attributes set their base size.
+Images show at their own size, or a width attribute's, follow text zoom and stay within the text's width.
 
 #+begin_src emacs-lisp
 ;; Links to facts search for their text within the note.
 (setopt org-link-search-must-match-exact-headline nil)
 (setopt org-display-remote-inline-images 'cache
-        org-image-actual-width '(600)
+        org-image-actual-width nil
+        ;; The cap applies after the zoom, so the window's width, not the fill column's.
+        org-image-max-width 'window
         org-image-align 'center
         org-startup-with-link-previews t
         org-safe-remote-resources '("\\`https://fniessen\\.github\\.io\\(?:/\\|\\'\\)"))
