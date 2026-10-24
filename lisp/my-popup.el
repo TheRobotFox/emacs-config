@@ -1,8 +1,10 @@
 ;;; my-popup.el --- Supporting panes beside an editing window -*- lexical-binding: t; -*-
 
 ;;; Commentary:
-;; Popper controls visibility; one display action gives supporting panes slots.
+;; Popper classifies buffers; one display action gives supporting panes slots.
 ;; Documentation and processes coexist.  Direct commands retain source context.
+;; `my/popup-toggle-all' hides all panes and brings the same ones back; each
+;; pane's own command shows it, and closes it again from inside.
 ;; Which buffers count as documentation or processes, how a REPL is found and
 ;; what a buffer's root directory is are configured through the variables below;
 ;; this file knows no particular language or package.
@@ -43,7 +45,13 @@ project.  It may signal a `user-error' explaining how to start the REPL."
 (defcustom my/popup-root-function #'my/popup-project-root
   "Function returning the current buffer's root directory, or nil."
   :type 'function)
+(defcustom my/popup-show-function nil
+  "Function showing a supporting buffer when `my/popup-toggle-all' has no
+hidden panes to bring back, or nil."
+  :type '(choice (const nil) function))
 
+(defvar my/popup--hidden nil
+  "Panes `my/popup-toggle-all' hid: (BUFFER SIDE ORIGIN START POINT FOCUSED).")
 (defvar-local my/popup--root nil
   "Root directory of the source a supporting buffer was first shown for.")
 ;; Eldoc refreshes its buffer with `special-mode', which resets local variables.
@@ -148,6 +156,44 @@ SHOW runs in the editing window; PREDICATE receives a buffer."
       (select-window (my/popup-source-window))
       (funcall show))))
 
+(defun my/popup--panes ()
+  "Return the supporting panes visible in the selected frame."
+  (cl-remove-if-not (lambda (win) (window-parameter win 'my/popup-pane))
+                    (window-list nil 'no-mini)))
+
+(defun my/popup-toggle-all ()
+  "Hide every supporting pane, or bring back the ones hidden last, in their
+places and with focus where it was.  With none to bring back, call
+`my/popup-show-function'."
+  (interactive)
+  (if-let* ((panes (my/popup--panes)))
+      (let ((focus (selected-window)))
+        (setq my/popup--hidden
+              (mapcar (lambda (win)
+                        (list (window-buffer win) (window-parameter win 'window-side)
+                              (window-parameter win 'my/popup-origin)
+                              (window-start win) (window-point win) (eq win focus)))
+                      panes))
+        (when (memq focus panes) (select-window (my/popup-source-window)))
+        (mapc #'delete-window panes))
+    (let ((hidden (seq-filter (lambda (state) (buffer-live-p (car state))) my/popup--hidden))
+          focus)
+      (setq my/popup--hidden nil)
+      (if (null hidden)
+          (when my/popup-show-function (funcall my/popup-show-function))
+        (pcase-dolist (`(,buffer ,side ,origin ,start ,point ,focused) hidden)
+          (when-let* ((window (my/popup--display buffer origin side)))
+            (set-window-start window start t)
+            (set-window-point window point)
+            (when focused (setq focus window))))
+        (when focus (select-window focus))))))
+
+(defun my/popup--select-or-close (buffer)
+  "Select BUFFER's pane, or close it when it is the selected window."
+  (if (eq (window-buffer (selected-window)) buffer)
+      (quit-window nil (selected-window))
+    (my/popup-select buffer)))
+
 (defun my/popup-toggle-side ()
   "Move visible supporting panes between right and bottom.
 Keep their buffers, view positions, source context and keyboard focus.
@@ -200,8 +246,8 @@ Restore the previous layout if the requested side cannot accommodate them."
     (file-name-as-directory (if (file-remote-p root) root (file-truename root)))))
 
 (defun my/popup-eshell ()
-  "Select this project's Eshell, creating it on first use.
-Outside a project, use a shell associated with the source directory."
+  "Select this project's Eshell, creating it on first use, or close it from
+inside.  Outside a project, use a shell associated with the source directory."
   (interactive)
   (let* ((root (cdr (my/popup--context)))
          (existing (cl-find-if
@@ -210,7 +256,7 @@ Outside a project, use a shell associated with the source directory."
                         (and (derived-mode-p 'eshell-mode)
                              (equal my/popup--root root))))
                     (buffer-list))))
-    (if existing (my/popup-select existing)
+    (if existing (my/popup--select-or-close existing)
       (require 'eshell)
       (let* ((default-directory root)
              (eshell-buffer-name
@@ -228,8 +274,9 @@ Outside a project, use a shell associated with the source directory."
               my/popup-repl-functions)))
 
 (defun my/popup-repl ()
-  "Select the source buffer's REPL, or a project REPL when its mode has none.
-Start language runtimes with their normal package commands first."
+  "Select the source buffer's REPL, or a project REPL when its mode has none;
+from inside the REPL, close it.  Start language runtimes with their normal
+package commands first."
   (interactive)
   (pcase-let* ((`(,source . ,root) (my/popup--context))
                (buffer
@@ -249,7 +296,7 @@ Start language runtimes with their normal package commands first."
                               (t (get-buffer (completing-read "Project REPL: "
                                                               (mapcar #'buffer-name candidates) nil t)))))))))
     (with-current-buffer buffer (setq-local my/popup--root root))
-    (my/popup-select buffer)))
+    (my/popup--select-or-close buffer)))
 
 (defun my/popup-eldoc ()
   "Toggle the full Eldoc pane for the source window, without selecting it.

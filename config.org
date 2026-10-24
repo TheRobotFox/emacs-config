@@ -164,6 +164,7 @@ One symbol table; language sections map their texts to it. Math notation is a pe
 ** Supporting panes
 
 Side panes for documentation and processes; language sections register their REPLs.
+=C-c o= hides all panes or brings them back; =M-o e/r= show Eshell or the REPL and close it from inside; =C-c O= cycles hidden popups.
 
 #+begin_src emacs-lisp
 (use-package my-popup
@@ -192,7 +193,7 @@ Side panes for documentation and processes; language sections register their REP
 (use-package popper
   :demand t
   :bind
-  ("C-c o"   . popper-toggle)
+  ("C-c o"   . my/popup-toggle-all)
   ("C-c O"   . popper-cycle)
   ("C-c M-o" . popper-toggle-type)
   :custom
@@ -205,6 +206,7 @@ Side panes for documentation and processes; language sections register their REP
   (popper-group-function #'my/popup-root)
   (popper-display-function #'my/popup-display)
   :config
+  (setopt my/popup-show-function #'popper-toggle)
   (popper-mode +1)
   (popper-echo-mode +1))
 #+end_src
@@ -770,9 +772,12 @@ Org savanna branch
 
 *** Editing commands
 
+=C-c C-x t=: inline task, a TODO inside the text that the agenda lists.
+
 #+begin_src emacs-lisp
 (setopt org-special-ctrl-a/e t
         org-insert-heading-respect-content t)
+(require 'org-inlinetask)
 
 (require 'my-org-editing)
 (keymap-unset org-mode-map "C-j")
@@ -1095,8 +1100,10 @@ Agenda files come from the note index; rows name notes by title. Tags are note g
 *** Note graph
 
 Nodes are files and ID headings, indexed by org-mem.
-=C-c n=: =f= find any name, =i= insert, =b/l= links, =t= tag, =h= problems, =r= reindex, =a= alias, =T= capture, =C= id, =I= inspect, =d= define, =p= name paragraph, =s= mark a statement (prefix: named), =x= extract, =q= query.
+=C-c n=: =f= find any name, =i= insert, =b/l= links, =t= tag, =h= problems, =r= reindex, =a= alias, =T= capture, =C= id, =I= inspect, =d= define, =p= name paragraph, =s= mark a statement (prefix: named), =x= extract (passage, region or heading), =m= merge into a note or heading, =q= query; both list what else changes before you confirm.
 =:MOC:= marks member lists (file or heading); =M-.= visits names; =M-o n= context pane.
+Relations: =[[rel:A ⇒ B][prose]]=, a bare name uses; connectives → ⇒ ⇔ ≅ ⊂ ⇄, typed as LaTeX after =\= in =C-c C-l rel:=; queries take them as arrows (=? ⇒ B=).
+Names: =C-c n i= links by name (prefix: scoped); =Note::Name= picks a view or reaches a heading; queries: =N :: ?= what N holds, =? :: N= what holds N.
 In a picker, =C-.= acts on the place: =i= insert link, =w= copy link, =b/l= links, =c= context, =o= show in other window, =t= tag (=A t= tags all; prefix: remove); =E= exports Org links.
 
 #+begin_src emacs-lisp
@@ -1120,20 +1127,29 @@ In a picker, =C-.= acts on the place: =i= insert link, =w= copy link, =b/l= link
   (org-note-graph-open-function #'my/popup-open-source)
   (org-note-graph-read-function #'org-note-graph-consult-read)
   (org-note-graph-member-collection "Members")
+  (org-note-graph-link-type "rel")
   (org-note-graph-stem-function #'org-note-graph-german-stem)
+  (org-note-graph-connectives
+   '(("→" "uses" forward "\\to" "->")
+     ("⇒" "implies" forward "\\Rightarrow" "\\implies" "=>")
+     ("⇔" "equivalent" both "\\Leftrightarrow" "\\iff" "<=>")
+     ("≅" "corresponds" both "\\cong")
+     ("⊂" "is a" forward "\\subset")
+     ("⇄" "dual" both "\\rightleftarrows")))
   :config
   (require 'org-note-graph-context)
   (require 'org-note-graph-xref)
   (require 'org-note-graph-german)
   (require 'org-note-graph-discovery)
-  (org-note-graph-define-collection "Members" #'org-note-graph-members)
+  (require 'org-note-graph-move)
   (org-note-graph-define-marker "def" :collection "Definition")
   (org-note-graph-define-marker "par" :collection "Absatz")
   (org-note-graph-define-marker "satz" :collection "Sätze")
   (org-note-graph-define-collection "Beweise" (org-note-graph-proofs "Sätze"))
-  (dolist (kind '("dual" "iso")) (org-note-graph-define-relation kind))
   ;; Relations wrapped around prose read as the prose.
-  (dolist (kind '("impl" "use")) (org-note-graph-define-relation kind :face '(:underline (:style dots))))
+  (org-note-graph-define-relation "rel" :face '(:underline (:style dots)))
+  ;; Statements in member lists make members, so after the relations.
+  (org-note-graph-define-collection "Members" #'org-note-graph-members)
 
   ;; Project notes join the index through org-id's extra files.
   (setq org-id-extra-files (my/project-notes))
@@ -1185,6 +1201,7 @@ In a picker, =C-.= acts on the place: =i= insert link, =w= copy link, =b/l= link
   "p" #'my/notes-mark-paragraph
   "s" #'my/notes-mark-statement
   "x" #'org-note-graph-extract
+  "m" #'org-note-graph-merge
   "q" #'org-note-graph-query)
 (keymap-global-set "C-c n" my/notes-map)
 #+end_src

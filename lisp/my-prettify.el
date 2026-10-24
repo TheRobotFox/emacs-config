@@ -12,7 +12,8 @@
 (require 'seq)
 
 (defvar my/pretty-symbols
-  '((composition . ?∘)
+  ;; ◦ rather than ∘, whose glyph is taller than the code font's lines.
+  '((composition . ?◦)
     (arrow . ?→)
     (left-arrow . ?←)
 

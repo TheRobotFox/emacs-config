@@ -65,35 +65,6 @@ a REPL even when the session has no process."
 
 ;;;; Notation
 
-(defface my/haskell-composition-face
-  '((t (:height 1.4)))
-  "Size of composition symbols."
-  :group 'faces)
-
-(defcustom my/haskell-composition-raise -0.1
-  "Vertical offset for enlarged composition symbols, in character heights.
-Negative values lower the symbol.  Refontify buffers after changing this."
-  :type 'number
-  :group 'faces)
-
-(defconst my/haskell-composition-keywords
-  '(("\\."
-     (0 (when (get-text-property (match-beginning 0) 'composition)
-          (put-text-property (match-beginning 0) (match-end 0)
-                             'display (list 'raise my/haskell-composition-raise))
-          'my/haskell-composition-face)
-        prepend)))
-  "Apply size after prettification has identified composition operators.")
-
-(defun my/haskell-composition-font-lock-setup ()
-  "Keep composition sizing after prettification, and remove it when disabled."
-  (font-lock-remove-keywords nil my/haskell-composition-keywords)
-  (setq-local font-lock-extra-managed-props
-              (cons 'display (remq 'display font-lock-extra-managed-props)))
-  (when prettify-symbols-mode
-    (font-lock-add-keywords nil my/haskell-composition-keywords 'append))
-  (font-lock-flush))
-
 (defun my/haskell-prettify-compose-p (start end match)
   "Keep dots in qualified names, numbers and larger operators literal.
 Prettify standalone dots, retaining the default string/comment checks."
@@ -104,9 +75,7 @@ Prettify standalone dots, retaining the default string/comment checks."
 
 (defun my/haskell-prettify-setup ()
   "Use Haskell-aware boundaries for symbolic substitutions."
-  (setq-local prettify-symbols-compose-predicate #'my/haskell-prettify-compose-p)
-  (add-hook 'prettify-symbols-mode-hook #'my/haskell-composition-font-lock-setup nil t)
-  (my/haskell-composition-font-lock-setup))
+  (setq-local prettify-symbols-compose-predicate #'my/haskell-prettify-compose-p))
 
 (provide 'my-haskell)
 ;;; my-haskell.el ends here

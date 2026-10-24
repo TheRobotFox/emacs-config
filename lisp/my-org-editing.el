@@ -17,7 +17,10 @@
   (let ((checkbox (org-list-get-checkbox (point) (org-list-struct)))
         (empty (save-excursion (looking-at org-list-full-item-re)
                                (goto-char (match-end 0))
-                               (looking-at-p "[ \t]*$"))))
+                               (looking-at-p "[ \t]*$")))
+        ;; Unsplit, the new item follows the whole item: its continuation
+        ;; lines and sub-items.
+        (org-M-RET-may-split-line nil))
     (if (eq direction 'above)
         (org-insert-item checkbox)
       (end-of-line)
