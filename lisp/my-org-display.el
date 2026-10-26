@@ -68,6 +68,24 @@ Use as a return filter on Org's inline image creation."
                                  "\nsvg { font-size: 16px; }")))
       image)))
 
+(defun my/org-fit-image-spacer (overlay &rest _)
+  "Make the spacer aligning OVERLAY's image as tall as the image.
+Point at the image shows on the spacer, which otherwise sits on the baseline
+in the middle of the image: below the window while its top shows, so
+scrolling past a tall image pulls the window back.  Use after
+`org-link-preview-file'."
+  (let* ((before (overlay-get overlay 'before-string))
+         (image (overlay-get overlay 'display))
+         (spacer (and (stringp before) (> (length before) 0)
+                      (get-text-property 0 'display before))))
+    (when (and (eq (car-safe spacer) 'space) (eq (car-safe image) 'image))
+      (setq before (copy-sequence before))
+      ;; Org's images keep the default :ascent, half above the baseline.
+      (put-text-property 0 1 'display
+                         (append spacer `(:height (1.0 . ,image) :ascent 50))
+                         before)
+      (overlay-put overlay 'before-string before))))
+
 ;;;; Folding
 
 (defcustom my/org-folded-languages '("d2" "dot" "plantuml")

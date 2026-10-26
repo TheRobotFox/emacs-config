@@ -807,6 +807,7 @@ Blocks get brackets in the indentation (=my-org-brackets=); =M-x my/org-brackets
   (dolist (hook '(org-modern-mode olivetti-mode variable-pitch-mode my/org-typography))
     (add-to-list 'consult-preview-allowed-hooks hook)))
 (advice-add 'org--create-inline-image :filter-return #'my/org-inline-image)
+(advice-add 'org-link-preview-file :after #'my/org-fit-image-spacer)
 
 (set-face-attribute 'org-table nil :inherit 'fixed-pitch)
 (set-face-attribute 'org-block nil            :foreground nil :inherit 'fixed-pitch :height 0.85)
@@ -1132,7 +1133,7 @@ In a picker, =C-.= acts on the place: =i= insert link, =w= copy link, =b/l= link
   (org-note-graph-connectives
    '(("→" "uses" forward "\\to" "->")
      ("⇒" "implies" forward "\\Rightarrow" "\\implies" "=>")
-     ("⇔" "equivalent" both "\\Leftrightarrow" "\\iff" "<=>")
+     ("⇔" "equivalent" both "↔" "\\Leftrightarrow" "\\iff" "<=>")
      ("≅" "corresponds" both "\\cong")
      ("⊂" "is a" forward "\\subset")
      ("⇄" "dual" both "\\rightleftarrows")))
