@@ -2,7 +2,8 @@
 
 ;;; Commentary:
 ;; Buffer-local display behaviour for Org notes: spacing, inline images that
-;; follow text zoom, and default folding of diagram and proof blocks.
+;; follow text zoom, centred display math, and default folding of diagram
+;; and proof blocks.
 ;; Enable through `org-mode-hook'; faces and fonts are set in config.org.
 
 ;;; Code:
@@ -69,11 +70,12 @@ Use as a return filter on Org's inline image creation."
       image)))
 
 (defun my/org-fit-image-spacer (overlay &rest _)
-  "Make the spacer aligning OVERLAY's image as tall as the image.
-Point at the image shows on the spacer, which otherwise sits on the baseline
-in the middle of the image: below the window while its top shows, so
-scrolling past a tall image pulls the window back.  Use after
-`org-link-preview-file'."
+  "Lead the line of OVERLAY's aligned image with a spacer as tall as the image.
+Point at the image shows on what leads its line.  Org's spacer sits on the
+baseline in the middle of the image, as does the indentation `org-indent-mode'
+prefixes: below the window while the image's top shows, so scrolling past a
+tall image pulls the window back.  An aligned image needs no indentation.
+Use after `org-link-preview-file'."
   (let* ((before (overlay-get overlay 'before-string))
          (image (overlay-get overlay 'display))
          (spacer (and (stringp before) (> (length before) 0)
@@ -84,7 +86,45 @@ scrolling past a tall image pulls the window back.  Use after
       (put-text-property 0 1 'display
                          (append spacer `(:height (1.0 . ,image) :ascent 50))
                          before)
-      (overlay-put overlay 'before-string before))))
+      (overlay-put overlay 'before-string before)
+      (overlay-put overlay 'line-prefix ""))))
+
+;;;; Display math
+
+(defun my/org-tight-display-math (arguments)
+  "Box \\[...\\] in ARGUMENTS of `org-latex-preview--tex-styled' as wide as
+its formula, needing the varwidth package in the preview preamble.
+Otherwise it fills a page about as wide as the text and spills out of a
+narrower window."
+  (pcase-let ((`(,type ,value . ,rest) arguments))
+    (if (string-match-p "\\`[ \t\n]*\\\\\\[" value)
+        `(,type ,(concat "\\begin{varwidth}{\\linewidth}" value "\\end{varwidth}") ,@rest)
+      arguments)))
+
+(defun my/org--math-edited (overlay after &rest _)
+  "Recentre OVERLAY AFTER an edit, which hides its preview without a hook."
+  (when after (my/org-center-display-math overlay)))
+
+(defun my/org-center-display-math (overlay)
+  "Centre the \\[...\\] OVERLAY previews when it stands alone on its line.
+The spacer stands before the image while it shows; Org's error marker keeps
+the place.  For the overlay update, open and close hooks of
+org-latex-preview."
+  (unless (memq #'my/org--math-edited (overlay-get overlay 'modification-hooks))
+    ;; After org-latex-preview's own, which hides the image.
+    (overlay-put overlay 'modification-hooks
+                 (append (overlay-get overlay 'modification-hooks) (list #'my/org--math-edited))))
+  (with-current-buffer (overlay-buffer overlay)
+    (let ((image (overlay-get overlay 'display))
+          (before (overlay-get overlay 'before-string)))
+      (when (or (null before) (get-text-property 0 'my/math-spacer before))
+        (overlay-put overlay 'before-string
+                     (and (eq (car-safe image) 'image)
+                          (save-excursion (goto-char (overlay-start overlay))
+                                          (and (looking-at-p "\\\\\\[")
+                                               (looking-back "^[ \t]*" (line-beginning-position))))
+                          (propertize " " 'my/math-spacer t
+                                      'display `(space :align-to (- center (0.5 . ,image))))))))))
 
 ;;;; Folding
 

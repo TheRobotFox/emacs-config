@@ -21,6 +21,7 @@
 (declare-function eww "eww" (url &optional new-buffer buffer))
 (declare-function pdf-view-active-region-p "pdf-view")
 (declare-function pdf-view-active-region-text "pdf-view")
+(declare-function pdf-view-goto-page "pdf-view" (page &optional window))
 (declare-function image-mode-window-get "image-mode" (prop &optional winprops))
 (declare-function bibtex-beginning-of-entry "bibtex")
 (declare-function bibtex-clean-entry "bibtex" (&optional new-key called-by-reformat))
@@ -208,6 +209,12 @@ A page in EWW, a PDF, a queue item or agenda line, or a source note."
          (or (unless (org-before-first-heading-p) (my/source-entry-resource))
              (org-with-wide-buffer (goto-char (point-min)) (my/source-entry-resource))))))
 
+(defun my/source--documents (resource)
+  "Return the document files of RESOURCE: a citekey's library files, or the file."
+  (pcase resource
+    (`(citekey . ,key) (gethash key (citar-get-files)))
+    (`(file . ,file) (list file))))
+
 (defun my/source-resource-title (resource)
   "Return a title for RESOURCE from the bibliography, the page, or by asking."
   (pcase resource
@@ -266,9 +273,7 @@ A page in EWW, a PDF, a queue item or agenda line, or a source note."
   (pcase-let* ((`(,type . ,value) resource)
                (entry (and (eq type 'citekey) (or (citar-get-entry value) (user-error "Unknown citekey %s" value))))
                (title (or title (my/source-resource-title resource)))
-               (pdf (pcase type
-                      ('citekey (let ((files (gethash value (citar-get-files)))) (and (length= files 1) (car files))))
-                      ('file value)))
+               (pdf (let ((files (my/source--documents resource))) (and (length= files 1) (car files))))
                (org-note-graph-capture-directory my/source-directory)
                (properties (append (if entry `(("CITEKEY" . ,value)) `(("SOURCE" . ,value)))
                                    (when pdf `(("NOTER_DOCUMENT" . ,(file-relative-name pdf my/source-directory))))))
@@ -371,16 +376,33 @@ else a URL, DOI or arXiv reference read from the minibuffer, else an entry."
     (`(citekey . ,key) (format ":CITEKEY: %s" key))
     (`(,_ . ,value) (format ":SOURCE: %s" value))))
 
+(defun my/source-noter-page (resource)
+  "Return the page org-noter last saved in RESOURCE's note, or nil."
+  (when-let* ((node (my/source-note resource))
+              ;; The buffer, since a running session saves the page there first.
+              ;; org-noter's start location, at the note's top.
+              (value (with-current-buffer (find-file-noselect (org-mem-entry-file node))
+                       (org-with-wide-buffer (goto-char (point-min)) (org-entry-get nil "NOTER_PAGE"))))
+              (location (ignore-errors (car (read-from-string value)))))
+    (seq-find #'integerp (list location (car-safe location)))))
+
 (defun my/source-start (&optional create-note)
-  "Start reading the queue item at point: mark it NEXT and open its source.
+  "Start or continue reading the queue item at point: mark it NEXT and open its
+source, a PDF not open yet at the page org-noter last saved in its note.
 With CREATE-NOTE, open or create its note as well."
   (interactive "P")
   (let* ((marker (my/source--queue-item-at-point))
          (resource (org-with-point-at marker
                      (or (my/source-entry-resource) (user-error "This item names no source"))))
-         (title (org-with-point-at marker (org-get-heading t t t t))))
+         (title (org-with-point-at marker (org-get-heading t t t t)))
+         (open (seq-some #'find-buffer-visiting (my/source--documents resource))))
     (org-with-point-at marker (org-todo "NEXT"))
     (my/source-open-resource resource)
+    ;; An open PDF already shows where reading stopped.
+    (when-let* (((not open))
+                ((derived-mode-p 'pdf-view-mode))
+                (page (my/source-noter-page resource)))
+      (pdf-view-goto-page page))
     (when-let* ((node (if create-note (my/source-ensure-note resource title) (my/source-note resource))))
       (display-buffer (find-file-noselect (org-mem-entry-file node))))))
 

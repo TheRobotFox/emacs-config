@@ -891,6 +891,14 @@ Math input is cdlatex's: TAB expands =fr=, =ceil= and the like in math, =aq= and
         org-latex-preview-cache 'temp
         org-highlight-latex-and-related '(latex script entities))
 (add-hook 'org-mode-hook #'org-latex-preview-mode)
+;; \[...\] is previewed as wide as its formula and centred, in any window.
+(setopt org-latex-preview-preamble
+        "\\documentclass{article}\n[DEFAULT-PACKAGES]\n[PACKAGES]\n\\usepackage{xcolor}\n\\usepackage{varwidth}")
+(advice-add 'org-latex-preview--tex-styled :filter-args #'my/org-tight-display-math)
+(dolist (hook '(org-latex-preview-overlay-update-functions
+                org-latex-preview-overlay-open-functions
+                org-latex-preview-overlay-close-functions))
+  (add-hook hook #'my/org-center-display-math))
 #+end_src
 
 *** Source blocks and Babel
@@ -1097,15 +1105,26 @@ Agenda files come from the note index; rows name notes by title. Tags are note g
 #+end_src
 
 ** Notes
-
 *** Note graph
 
 Nodes are files and ID headings, indexed by org-mem.
-=C-c n=: =f= find any name, =i= insert, =b/l= links, =t= tag, =h= problems, =r= reindex, =a= alias, =T= capture, =C= id, =I= inspect, =d= define, =p= name paragraph, =s= mark a statement (prefix: named), =x= extract (passage, region or heading), =m= merge into a note or heading, =q= query; both list what else changes before you confirm.
+=C-c n=: =f= find any name, =i= insert, =b/l= links, =t= tag, =h= problems, =r= reindex, =a= alias, =T= capture, =C= id, =I= inspect, =d= define, =p= name paragraph, =s= mark a statement (prefix: named), =x= extract (passage, region or heading), =m= merge into a note or heading, =R= rename the marker's term or the note everywhere, =q= query; all three list what else changes before you confirm.
 =:MOC:= marks member lists (file or heading); =M-.= visits names; =M-o n= context pane.
-Relations: =[[rel:A ⇒ B][prose]]=, a bare name uses; connectives → ⇒ ⇔ ≅ ⊂ ⇄, typed as LaTeX after =\= in =C-c C-l rel:=; queries take them as arrows (=? ⇒ B=).
+Relations connect concepts worth remembering. The everyday arrows are =→= related, =⇒= leads to, =⊂= kind of and =↦= viewed as. They are reading cues; the package does not infer or inherit properties. =[[rel:A, B ⇒ C][prose]]= keeps several names in one connection. An omitted side names the enclosing passage, heading or note, including a =satz:= passage.
+Theorems are named passages connecting useful assumptions and conclusions. Keep the marker and statement in the same paragraph:
+#+begin_example
+[[satz:Beschränktheit konvergenter Folgen][Satz]]:
+Jede [[rel:Konvergenz ⇒][konvergente]] reelle Folge ist
+[[rel:⇒ Beschränktheit][beschränkt]].
+#+end_example
+=Konvergenz ⇒ ? ⇒ Beschränktheit= finds this theorem. Its precise conditions and explanation stay in prose; add whichever connections help recall it.
+
+Labels are free text: enter =↦[Addition, abelsch] Gruppe= in =C-c C-l rel:= and describe it as "abelsche Gruppe". The insertion command escapes Org's brackets. Qualifiers can stay in prose or labels; link a qualifier as a concept when that connection is useful to revisit. Completion offers the four everyday kinds and their LaTeX spellings. Existing other arrows remain readable and searchable. Unfinished names stay in their connections; known participants remain navigable. Adding a destination later resolves its name on reindex.
+The context pane starts with compact connections: =l= filters by label (empty clears), =p= toggles source prose, RET visits a name, and =I= inspects its public fields. A name marked =?= has no unique destination; RET visits the source. Filtering and previews reset when following another place. Write a connection where you explain it, use labels for "in what respect?", and follow its participants to explore their connections.
+Queries bind places and preview the full supporting statement: =A, B ⇒ ?=, =A, ? ⇒ C=, =A, B ⇒ ? ⇒ C=; ordinary filters still compose, e.g. =Sätze & (? ⇒ C)=. A pattern without =?= selects the statements themselves: =A ⇒ B= or =_ ⇒ Bijektivität= (=_= accepts any participant). TAB completes names, collections, operators and labels. A named participant appears once; several definition locations are available in a second picker. These search recorded relations, without inferring conclusions.
+Filters read the selected item: =rel[type=implication,label=Generalisierung]=, =rel \ rel[type=reference]=. Use =rel & (#Analysis :: ?)= for relations inside tagged notes. TAB explains filter fields; =C-c n I= shows the public fields of the item at point (on a relation link: that statement).
 Names: =C-c n i= links by name (prefix: scoped); =Note::Name= picks a view or reaches a heading; queries: =N :: ?= what N holds, =? :: N= what holds N.
-In a picker, =C-.= acts on the place: =i= insert link, =w= copy link, =b/l= links, =c= context, =o= show in other window, =t= tag (=A t= tags all; prefix: remove); =E= exports Org links.
+In a picker, =C-.= acts on the place: =i= insert link, =w= copy link, =b/l= links, =c= context, =I= inspect fields, =o= show in other window, =t= tag (=A t= tags all; prefix: remove); =E= exports Org links.
 
 #+begin_src emacs-lisp
 (use-package org-mem
@@ -1131,12 +1150,18 @@ In a picker, =C-.= acts on the place: =i= insert link, =w= copy link, =b/l= link
   (org-note-graph-link-type "rel")
   (org-note-graph-stem-function #'org-note-graph-german-stem)
   (org-note-graph-connectives
-   '(("→" "uses" forward "\\to" "->")
-     ("⇒" "implies" forward "\\Rightarrow" "\\implies" "=>")
-     ("⇔" "equivalent" both "↔" "\\Leftrightarrow" "\\iff" "<=>")
-     ("≅" "corresponds" both "\\cong")
-     ("⊂" "is a" forward "\\subset")
-     ("⇄" "dual" both "\\rightleftarrows")))
+   '(("→" "references" forward reference "\\to" "->")
+     ("←" "references" backward reference "\\leftarrow" "<-")
+     ("⇒" "implies" forward implication "\\Rightarrow" "\\implies" "=>")
+     ("⇐" "implies" backward implication "\\Leftarrow" "<=")
+     ("⇔" "equivalent" both equivalence "↔" "\\Leftrightarrow" "\\iff" "<=>")
+     ("≅" "corresponds" both correspondence "\\cong")
+     ("⊂" "specialises" forward specialisation "\\subset")
+     ("⊃" "specialises" backward specialisation "\\supset")
+     ("↦" "view as" forward perspective "\\mapsto")
+     ("∈" "member of" forward membership "\\in")
+     ("∋" "member of" backward membership "\\ni")
+     ("⇄" "dual" both duality "\\rightleftarrows")))
   :config
   (require 'org-note-graph-context)
   (require 'org-note-graph-xref)
@@ -1144,7 +1169,6 @@ In a picker, =C-.= acts on the place: =i= insert link, =w= copy link, =b/l= link
   (require 'org-note-graph-discovery)
   (require 'org-note-graph-move)
   (org-note-graph-define-marker "def" :collection "Definition")
-  (org-note-graph-define-marker "par" :collection "Absatz")
   (org-note-graph-define-marker "satz" :collection "Sätze")
   (org-note-graph-define-collection "Beweise" (org-note-graph-proofs "Sätze"))
   ;; Relations wrapped around prose read as the prose.
@@ -1203,6 +1227,7 @@ In a picker, =C-.= acts on the place: =i= insert link, =w= copy link, =b/l= link
   "s" #'my/notes-mark-statement
   "x" #'org-note-graph-extract
   "m" #'org-note-graph-merge
+  "R" #'org-note-graph-rename
   "q" #'org-note-graph-query)
 (keymap-global-set "C-c n" my/notes-map)
 #+end_src
@@ -1211,7 +1236,7 @@ In a picker, =C-.= acts on the place: =i= insert link, =w= copy link, =b/l= link
 
 Citar for bibliography and citations; =my-sources= imports papers and runs the reading queue and
 source notes, created at the first captured thought (=C-c c q/r=) or with =C-u C-c r s=.
-=C-c r=: =a= queue (as =C-c c s=), =b= add a bibliography entry by hand, =s= start reading, =f= finish with a verdict, =q= the queue;
+=C-c r=: =a= queue (as =C-c c s=), =b= add a bibliography entry by hand, =s= start or continue reading (a PDF at org-noter's last page), =f= finish with a verdict, =q= the queue;
 =B= browse, =S= notes, =A= associate, =D= import a DOI or arXiv paper (PDFs from arXiv or Unpaywall), =N= annotate.
 
 #+begin_src emacs-lisp
