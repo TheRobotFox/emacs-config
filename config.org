@@ -343,7 +343,11 @@ Side panes for documentation and processes; language sections register their REP
    :map minibuffer-local-map
    ("C-c C-o" . embark-export))
   :init
-  (setq prefix-help-command #'embark-prefix-help-command))
+  (setq prefix-help-command #'embark-prefix-help-command)
+  :config
+  ;; Link following acts at point; any ensuing prompt asks for a destination.
+  (add-to-list 'embark-target-injection-hooks
+               '(org-open-at-point-global embark--ignore-target)))
 
 (use-package embark-consult :defer t)
 (use-package wgrep :defer t)
@@ -1045,44 +1049,25 @@ Agenda files come from the note index; rows name notes by title. Tags are note g
 (org-add-agenda-custom-command
  '("p" "Project: week, next actions, and backlog" my/project-task-agenda ""))
 
-(org-add-agenda-custom-command
- '("s" "Reading queue" todo "TODO|NEXT"
-   ((org-agenda-files (list my/source-queue-file))
-    (org-agenda-sorting-strategy '(todo-state-down)))))
 #+end_src
 
 *** Capture
 
-=C-c c=: =t= task in context (project, note, inbox), =n= in a note, =i= in the inbox, =b= backlog idea, =?= question; =s= queue the page or PDF at hand, else a URL, DOI or arXiv reference (importing papers) or a bibliography entry; =q/r= quote or thought about the source being read, with its page in a PDF.
+=C-c c=: =t= inbox task, =b= backlog idea, =?= question, =s= source bookmark.
+Project tasks use =C-x p C=.
 
 #+begin_src emacs-lisp
-;; setq: setopt would check targets that the Sources block defines.
 (setq org-capture-templates
-      '(("t" "Task in context: project, current note, or inbox" entry
-         (function my/task-context-target)
-         "* TODO %?\n%a\n%i\n" :empty-lines 1)
-        ("n" "Task in current or selected note" entry
-         (function my/task-note-target)
-         "* TODO %?\n%a\n%i\n" :empty-lines 1)
-        ("i" "Task in notes inbox" entry
-         (function my/task-inbox-target)
+      '(("t" "Inbox task" entry (file my/task-inbox-file)
          "* TODO %?\n%a\n%i\n" :empty-lines 1)
         ("b" "Backlog idea or plan" entry
          (file+headline "~/org/ideas.org" "Backlog")
          "* IDEA %?\nAdded: %U\n%a\n%i\n" :empty-lines 1)
-        ("?" "Question to answer later" entry
-         (file "~/org/questions.org")
+        ("?" "Question to answer later" entry (file "~/org/questions.org")
          "* QUESTION %?\nAdded: %U\n%a\n%i\n" :empty-lines 1)
-        ("s" "Source to read: the page or PDF at hand, else a reference or entry" entry
-         (file my/source-queue-file)
-         "* TODO %(my/source-capture-title)\n:PROPERTIES:\n%(my/source-capture-properties)\n:END:\nCaptured: %U\n\n%?\n"
-         :empty-lines 1)
-        ("q" "Quote from the source being read" plain
-         (function my/source-note-target)
-         "#+begin_quote\n%(my/source-selection)\n#+end_quote\n%(my/source-location)\n%?" :empty-lines 1)
-        ("r" "Thought about the source being read" plain
-         (function my/source-note-target)
-         "%?\n%(my/source-location)" :empty-lines 1)))
+        ("s" "Source bookmark" plain (function my/source-capture-target)
+         "%?" :hook my/source-capture-header :empty-lines 0
+         :no-save t :after-finalize my/source-capture-save)))
 (dolist (file '("~/org/ideas.org" "~/org/questions.org"))
   (add-to-list 'my/task-extra-files file))
 (keymap-global-set "C-c c" #'org-capture)
@@ -1107,85 +1092,51 @@ Agenda files come from the note index; rows name notes by title. Tags are note g
 ** Notes
 *** Note graph
 
-Nodes are files and ID headings, indexed by org-mem.
-=C-c n=: =f= find any name, =i= insert, =b/l= links, =t= tag, =h= problems, =r= reindex, =a= alias, =T= capture, =C= id, =I= inspect, =d= define, =p= name paragraph, =s= mark a statement (prefix: named), =x= extract (passage, region or heading), =m= merge into a note or heading, =R= rename the marker's term or the note everywhere, =q= query; all three list what else changes before you confirm.
-=:MOC:= marks member lists (file or heading); =M-.= visits names; =M-o n= context pane.
-Relations connect concepts worth remembering. The everyday arrows are =→= related, =⇒= leads to, =⊂= kind of and =↦= viewed as. They are reading cues; the package does not infer or inherit properties. =[[rel:A, B ⇒ C][prose]]= keeps several names in one connection. An omitted side names the enclosing passage, heading or note, including a =satz:= passage.
-Theorems are named passages connecting useful assumptions and conclusions. Keep the marker and statement in the same paragraph:
-#+begin_example
-[[satz:Beschränktheit konvergenter Folgen][Satz]]:
-Jede [[rel:Konvergenz ⇒][konvergente]] reelle Folge ist
-[[rel:⇒ Beschränktheit][beschränkt]].
-#+end_example
-=Konvergenz ⇒ ? ⇒ Beschränktheit= finds this theorem. Its precise conditions and explanation stay in prose; add whichever connections help recall it.
+The document graph contains native Org locations and links. IDs name locations;
+=id:= references and =in:= memberships connect the nearest ID-bearing source to
+the target location. =def:/satz:= introduce terms/statements separately, using an
+explicit name or their enclosing named location’s name. Omitted relation participants
+use the preceding participant marker, stopping at a heading/note-top. Math and prose
+retain native bounds. =satz:= composes same-kind fragments belonging to that marker.
 
-Labels are free text: enter =↦[Addition, abelsch] Gruppe= in =C-c C-l rel:= and describe it as "abelsche Gruppe". The insertion command escapes Org's brackets. Qualifiers can stay in prose or labels; link a qualifier as a concept when that connection is useful to revisit. Completion offers the four everyday kinds and their LaTeX spellings. Existing other arrows remain readable and searchable. Unfinished names stay in their connections; known participants remain navigable. Adding a destination later resolves its name on reindex.
-The context pane starts with compact connections: =l= filters by label (empty clears), =p= toggles source prose, RET visits a name, and =I= inspects its public fields. A name marked =?= has no unique destination; RET visits the source. Filtering and previews reset when following another place. Write a connection where you explain it, use labels for "in what respect?", and follow its participants to explore their connections.
-Queries bind places and preview the full supporting statement: =A, B ⇒ ?=, =A, ? ⇒ C=, =A, B ⇒ ? ⇒ C=; ordinary filters still compose, e.g. =Sätze & (? ⇒ C)=. A pattern without =?= selects the statements themselves: =A ⇒ B= or =_ ⇒ Bijektivität= (=_= accepts any participant). TAB completes names, collections, operators and labels. A named participant appears once; several definition locations are available in a second picker. These search recorded relations, without inferring conclusions.
-Filters read the selected item: =rel[type=implication,label=Generalisierung]=, =rel \ rel[type=reference]=. Use =rel & (#Analysis :: ?)= for relations inside tagged notes. TAB explains filter fields; =C-c n I= shows the public fields of the item at point (on a relation link: that statement).
-Names: =C-c n i= links by name (prefix: scoped); =Note::Name= picks a view or reaches a heading; queries: =N :: ?= what N holds, =? :: N= what holds N.
-In a picker, =C-.= acts on the place: =i= insert link, =w= copy link, =b/l= links, =c= context, =I= inspect fields, =o= show in other window, =t= tag (=A t= tags all; prefix: remove); =E= exports Org links.
+Queries operate on a prose view of fine declaration locations; =.= is the location
+at point. =::= steps inward through containment, =::*= broadens to contents.
+The raw term graph remains available through the prose graph’s =:terms= data.
+
+=C-c n=: =f= find/create, =i= insert, =q= query, =b/l= incoming/outgoing references,
+=t= add a file tag, =h= lint, =r= refresh, =C= ID, =d/s= definition/statement marker,
+=x/m/R= extract/merge/rename. =M-o n= toggles context. Edit aliases with native Org.
+Refile headings to existing destinations directly; prose extraction, new notes and
+whole-note merges use capture review. Moves warn about implicit context changes.
+Rename updates shared names and explicit references, leaving descriptions and prose.
 
 #+begin_src emacs-lisp
-(use-package org-mem
-  :custom
-  (org-mem-watch-dirs (list my/notes-directory))
-  (org-mem-do-cache-text t)
-  (org-mem-do-warn-title-collisions nil)
-  :config
-  (add-to-list 'org-mem-exclude (file-truename user-emacs-directory)))
-
 (use-package org-note-graph
   :straight (:host github :repo "TheRobotFox/org-note-graph"
              :local-repo "~/projects/org-note-graph"
              :files ("org-note-graph*.el"))
-  :after (org org-mem)
+  :after org
   :demand t
-  :custom
-  (org-note-graph-capture-directory my/notes-directory)
-  (org-note-graph-display-function #'my/popup-select)
-  (org-note-graph-open-function #'my/popup-open-source)
-  (org-note-graph-read-function #'org-note-graph-consult-read)
-  (org-note-graph-member-collection "Members")
-  (org-note-graph-link-type "rel")
-  (org-note-graph-stem-function #'org-note-graph-german-stem)
-  (org-note-graph-connectives
-   '(("→" "references" forward reference "\\to" "->")
-     ("←" "references" backward reference "\\leftarrow" "<-")
-     ("⇒" "implies" forward implication "\\Rightarrow" "\\implies" "=>")
-     ("⇐" "implies" backward implication "\\Leftarrow" "<=")
-     ("⇔" "equivalent" both equivalence "↔" "\\Leftrightarrow" "\\iff" "<=>")
-     ("≅" "corresponds" both correspondence "\\cong")
-     ("⊂" "specialises" forward specialisation "\\subset")
-     ("⊃" "specialises" backward specialisation "\\supset")
-     ("↦" "view as" forward perspective "\\mapsto")
-     ("∈" "member of" forward membership "\\in")
-     ("∋" "member of" backward membership "\\ni")
-     ("⇄" "dual" both duality "\\rightleftarrows")))
   :config
-  (require 'org-note-graph-context)
-  (require 'org-note-graph-xref)
-  (require 'org-note-graph-german)
-  (require 'org-note-graph-discovery)
-  (require 'org-note-graph-move)
-  (org-note-graph-define-marker "def" :collection "Definition")
-  (org-note-graph-define-marker "satz" :collection "Sätze")
-  (org-note-graph-define-collection "Beweise" (org-note-graph-proofs "Sätze"))
-  ;; Relations wrapped around prose read as the prose.
-  (org-note-graph-define-relation "rel" :face '(:underline (:style dots)))
-  ;; Statements in member lists make members, so after the relations.
-  (org-note-graph-define-collection "Members" #'org-note-graph-members)
-
-  ;; Project notes join the index through org-id's extra files.
-  (setq org-id-extra-files (my/project-notes))
+  (require 'my-notes)
+  (require 'org-note-graph-consult)
+  (setq org-note-graph-capture-directory my/notes-directory
+        org-note-graph-graph-function #'my/note-graph
+        org-note-graph-open-function #'my/popup-open-source
+        org-note-graph-read-function #'org-note-graph-consult-read)
+  (org-note-graph-enable-links)
+  (org-link-set-parameters "rel" :face '(:underline (:style dots)))
+  (add-hook 'after-change-functions #'my/notes-invalidate)
+  (add-hook 'after-save-hook #'my/notes-invalidate)
+  (add-hook 'after-revert-hook #'my/notes-invalidate)
   (add-hook 'my/project-note-hook #'my/project-note-index)
-  (org-mem-updater-mode 1)
-  (add-to-list 'my/popup-documentation-modes 'org-note-graph-context-view-mode)
-  (add-to-list 'my/popup-documentation-names "\\`\\*Notes: ")
-  (with-eval-after-load 'embark
-    (add-to-list 'embark-keymap-alist '(org-note-graph-place org-note-graph-place-map embark-general-map))
-    (add-to-list 'embark-multitarget-actions #'org-note-graph-place-tag)
-    (add-to-list 'embark-exporters-alist '(org-note-graph-place . org-note-graph-place-export))))
+  (add-hook 'my/project-note-hook #'my/notes-invalidate-all)
+  (with-eval-after-load 'magit
+    (add-hook 'magit-post-refresh-hook #'my/notes-invalidate-all 90))
+  (defvar my/notes-context-timer (run-with-idle-timer 0.6 t #'my/notes-follow-context))
+  (keymap-set org-note-graph-context-view-mode-map "g"
+              (lambda () (interactive) (my/notes-refresh) (org-note-graph-context-refresh)))
+  (add-to-list 'my/popup-documentation-modes 'org-note-graph-context-view-mode))
 
 (defun my/notes-mark-definition ()
   "Mark the word or region as a definition."
@@ -1193,22 +1144,24 @@ In a picker, =C-.= acts on the place: =i= insert link, =w= copy link, =b/l= link
   (org-note-graph-mark "def"))
 
 (defun my/notes-mark-statement (&optional named)
-  "Mark the word or region as a statement; with a prefix, NAMED reads a name."
+  "Mark the word or region as a statement; NAMED reads a name."
   (interactive "P")
   (org-note-graph-mark "satz" (if named (read-string "Statement name: ") "")))
 
-(defun my/notes-mark-paragraph ()
-  "Name the paragraph at point after the word or region."
-  (interactive)
-  (org-note-graph-mark "par"))
-
 (defun my/notes-toggle-context ()
-  "Toggle the context pane of the note in the editing window."
+  "Toggle context for the note in the editing window."
   (interactive)
   (my/popup-toggle
    (lambda (buffer) (equal (buffer-name buffer) org-note-graph-context-buffer))
-   #'org-note-graph-context))
+   (lambda () (org-note-graph-context (my/note-graph)))))
 (keymap-set my/popup-command-map "n" #'my/notes-toggle-context)
+
+(defun my/notes-push-mark (function &rest arguments)
+  "Keep generated context positions out of global navigation history."
+  (if (derived-mode-p 'org-note-graph-context-view-mode)
+      (let (global-mark-ring) (apply function arguments))
+    (apply function arguments)))
+(advice-add 'push-mark :around #'my/notes-push-mark)
 
 (defvar-keymap my/notes-map
   "f" #'org-note-graph-find
@@ -1217,13 +1170,9 @@ In a picker, =C-.= acts on the place: =i= insert link, =w= copy link, =b/l= link
   "l" #'org-note-graph-forward-links
   "t" #'org-note-graph-add-tag
   "h" #'org-note-graph-lint
-  "r" #'org-note-graph-refresh
-  "a" #'org-note-graph-edit-alias
-  "T" #'org-note-graph-capture
+  "r" #'my/notes-refresh
   "C" #'org-id-get-create
-  "I" #'org-note-graph-inspect
   "d" #'my/notes-mark-definition
-  "p" #'my/notes-mark-paragraph
   "s" #'my/notes-mark-statement
   "x" #'org-note-graph-extract
   "m" #'org-note-graph-merge
@@ -1234,65 +1183,51 @@ In a picker, =C-.= acts on the place: =i= insert link, =w= copy link, =b/l= link
 
 *** Sources and reading
 
-Citar for bibliography and citations; =my-sources= imports papers and runs the reading queue and
-source notes, created at the first captured thought (=C-c c q/r=) or with =C-u C-c r s=.
-=C-c r=: =a= queue (as =C-c c s=), =b= add a bibliography entry by hand, =s= start or continue reading (a PDF at org-noter's last page), =f= finish with a verdict, =q= the queue;
-=B= browse, =S= notes, =A= associate, =D= import a DOI or arXiv paper (PDFs from arXiv or Unpaywall), =N= annotate.
+Citar owns bibliography, citations and attachments. Source captures create notes
+with =CITEKEY= and a =reading= tag; the reading picker simply queries that tag.
+=C-c r=: =a= capture, =q= reading notes, =s= show document alongside its note,
+=b= bibliography entry, =B= browse, =S= notes, =A= associate, =D= import metadata,
+=F= attach a file. Documents are retrieved when requested. Existing =reading.org=
+entries remain available for manual reorganization.
 
 #+begin_src emacs-lisp
 (use-package citar
   :demand t
   :config
+  (setq my/source-directory (expand-file-name "sources/" my/notes-directory))
   (require 'my-sources)
   (setopt org-cite-global-bibliography (list my/source-bibliography)
           citar-bibliography org-cite-global-bibliography
           citar-library-paths (list (expand-file-name "papers/" org-directory))
           citar-library-file-extensions '("pdf")
-          citar-notes-source 'org-note-graph
+          citar-notes-source 'source-notes
           org-cite-insert-processor 'citar
           org-cite-follow-processor 'citar
           org-cite-activate-processor 'citar
-          org-cite-export-processors '((latex biblatex) (t basic)))
-  (setopt bibtex-autokey-year-title-separator "_"
+          org-cite-export-processors '((latex biblatex) (t basic))
+          bibtex-dialect 'biblatex
+          bibtex-autokey-year-title-separator "_"
           bibtex-autokey-titlewords 1)
-  (add-to-list 'my/task-extra-files my/source-queue-file)
-  (defun my/source-queue-add ()
-    "Queue the page or PDF at hand, or a reference, for reading."
-    (interactive)
-    (org-capture nil "s"))
-  (defun my/source-queue ()
-    "Show the reading queue."
-    (interactive)
-    (org-agenda nil "s"))
   (defvar-keymap my/source-map
-    "a" #'my/source-queue-add
+    "a" #'my/source-capture
     "b" #'my/source-new-entry
-    "s" #'my/source-start
-    "f" #'my/source-finish
+    "s" #'my/source-show-document
     "q" #'my/source-queue
     "B" #'citar-open
     "S" #'citar-open-notes
     "A" #'my/source-associate
-    "D" #'my/source-add)
+    "D" #'my/source-add
+    "F" #'citar-add-file-to-library)
   (keymap-global-set "C-c r" my/source-map))
 
 (use-package citar-embark
   :after (citar embark)
   :config (citar-embark-mode 1))
 
-(use-package org-noter
-  :commands org-noter
-  :init (keymap-set my/source-map "N" #'org-noter)
-  :config
-  ;; Starting from a document, notes go to its source note, created when missing.
-  (add-hook 'org-noter-create-session-from-document-hook #'my/source-noter-prepare)
-  (add-hook 'org-noter-find-additional-notes-functions #'my/source-noter-notes)
-  :custom
-  (org-noter-notes-search-path (list my/notes-directory))
-  (org-noter-prefer-root-as-file-level t)
-  (org-noter-always-create-frame nil)
-  (org-noter-kill-frame-at-session-end nil)
-  (org-noter-auto-save-last-location t))
+(use-package saveplace-pdf-view
+  :after pdf-tools
+  :demand t
+  :hook (pdf-view-mode . save-place-local-mode))
 #+end_src
 
 *** Anki

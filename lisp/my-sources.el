@@ -1,52 +1,21 @@
-;;; my-sources.el --- Reading queue, source notes and bibliography -*- lexical-binding: t; -*-
-
-;;; Commentary:
-;; A source is a web page, a PDF or a bibliography entry.  The reading queue
-;; (`my/source-queue-file') holds TODO items pointing at sources; a source note in
-;; the note graph holds thoughts about one.  Notes are created on demand: when
-;; reading starts with a prefix argument, or at the first captured thought.
-;; Papers keep their BibTeX metadata in Citar; their notes carry CITEKEY and
-;; NOTER_DOCUMENT, other sources carry SOURCE.  Citar reads the same notes.
-
-;;; Code:
+;;; my-sources.el --- Bibliography, source notes and reading -*- lexical-binding: t; -*-
 (require 'citar)
-(require 'org)
-(require 'org-id)
 (require 'org-capture)
-(require 'org-agenda)
-(require 'subr-x)
-(require 'org-note-graph-ui)
+(require 'org-id)
+(require 'bibtex)
+(require 'url)
+(require 'url-handlers)
+(require 'dom)
+(require 'org-note-graph-core)
 
-(declare-function eww-current-url "eww")
+(declare-function my/org-graph "my-notes" ())
+(declare-function org-note-graph-query "org-note-graph-commands" (graph &optional text context))
 (declare-function eww "eww" (url &optional new-buffer buffer))
-(declare-function pdf-view-active-region-p "pdf-view")
-(declare-function pdf-view-active-region-text "pdf-view")
-(declare-function pdf-view-goto-page "pdf-view" (page &optional window))
-(declare-function image-mode-window-get "image-mode" (prop &optional winprops))
-(declare-function bibtex-beginning-of-entry "bibtex")
-(declare-function bibtex-clean-entry "bibtex" (&optional new-key called-by-reformat))
-(declare-function bibtex-key-in-head "bibtex" (&optional empty))
-(defvar eww-data)
-(defvar bibtex-entry-format)
-(defvar bibtex-autokey-edit-before-use)
-(defvar url-mime-accept-string)
 (defvar url-http-response-status)
 (defvar url-http-end-of-headers)
-
-(defgroup my/sources nil "Reading queue and source notes." :group 'org)
-(defcustom my/source-bibliography (expand-file-name "references.bib" org-directory)
-  "Shared bibliography used by source notes and Org citations."
-  :type 'file)
-(defcustom my/source-directory (expand-file-name "sources/" org-note-graph-capture-directory)
-  "Directory for source notes."
-  :type 'directory)
-(defcustom my/source-queue-file (expand-file-name "reading.org" org-directory)
-  "Reading queue: sources to read, as TODO items."
-  :type 'file)
-
-;;;; Resources
-
-;; A resource is (TYPE . VALUE): (citekey . KEY), (url . URL) or (file . PATH).
+(defvar my/source-bibliography (expand-file-name "references.bib" org-directory))
+(defvar my/source-directory (expand-file-name "sources/" org-directory))
+(defvar my/source-capture-key nil "Bibliography key supplied by Citar for this capture.")
 
 (defun my/source-url-p (text)
   "Whether TEXT is a web URL."
@@ -66,8 +35,6 @@
           ((string-match (concat "\\`doi:" doi "\\'") text) (match-string 1 text))
           ((string-match (concat "\\`" doi "\\'") text) (match-string 1 text)))))
 
-;;;; Import
-
 (defun my/source--fetch (url accept read)
   "Call READ at the body of URL's response, requesting media type ACCEPT.
 Return its value, or nil when the request fails."
@@ -75,10 +42,10 @@ Return its value, or nil when the request fails."
     (when-let* ((buffer (ignore-errors (url-retrieve-synchronously url t t 30))))
       (with-current-buffer buffer
         (unwind-protect
-            (when (eql url-http-response-status 200)
-              (goto-char url-http-end-of-headers)
-              (forward-line)
-              (funcall read))
+             (when (eql url-http-response-status 200)
+               (goto-char url-http-end-of-headers)
+               (forward-line)
+               (funcall read))
           (kill-buffer buffer))))))
 
 (defun my/source--text ()
@@ -90,17 +57,7 @@ Return its value, or nil when the request fails."
   (my/source--fetch (format "https://api.unpaywall.org/v2/%s?email=%s" doi user-mail-address)
                     "application/json"
                     (lambda () (let-alist (json-parse-buffer :object-type 'alist :null-object nil)
-                                 .best_oa_location.url_for_pdf))))
-
-(defun my/source--save-pdf (url key)
-  "Save the PDF at URL as KEY's library file; return the file, or nil."
-  (let ((file (expand-file-name (concat key ".pdf") (car citar-library-paths))))
-    (make-directory (file-name-directory file) t)
-    (my/source--fetch url "application/pdf"
-                      (lambda () (when (looking-at-p "%PDF")
-                                   (let ((coding-system-for-write 'binary))
-                                     (write-region (point) (point-max) file nil 'silent))
-                                   file)))))
+					  .best_oa_location.url_for_pdf))))
 
 (defun my/source--key-where (field value)
   "Return the key of the bibliography entry whose FIELD is VALUE, or nil."
@@ -108,62 +65,19 @@ Return its value, or nil when the request fails."
             (hash-table-keys (citar-get-entries))))
 
 (defun my/source--add-entry (bibtex)
-  "Append the BibTeX entry BIBTEX to the bibliography and return its new key.
+  "Append the BibTeX entry BIBTEX to the bibliography and return its key.
 Publisher metadata is often incomplete, so missing mandatory fields pass."
   (with-current-buffer (find-file-noselect my/source-bibliography)
+    (bibtex-set-dialect 'biblatex t)
     (save-excursion
       (goto-char (point-max))
       (insert "\n" (string-trim bibtex) "\n")
       (bibtex-beginning-of-entry)
       (let ((bibtex-entry-format '(opts-or-alts numerical-fields realign))
             (bibtex-autokey-edit-before-use nil))
-        (bibtex-clean-entry t))
+        (bibtex-clean-entry (not (org-string-nw-p (bibtex-key-in-head)))))
       (bibtex-beginning-of-entry)
       (prog1 (bibtex-key-in-head) (save-buffer)))))
-
-(defun my/source--import (field id bibtex-url pdf-url)
-  "Return the key of the entry whose FIELD is ID, importing it when missing.
-BIBTEX-URL serves the entry; PDF-URL is a function returning a PDF URL or nil."
-  (if-let* ((key (my/source--key-where field id)))
-      (progn (message "%s is already in the bibliography" key) key)
-    (let* ((key (my/source--add-entry
-                 (or (my/source--fetch bibtex-url "application/x-bibtex" #'my/source--text)
-                     (user-error "No BibTeX entry for %s" id))))
-           (pdf (when-let* ((url (funcall pdf-url))) (my/source--save-pdf url key))))
-      (message (if pdf "Imported %s with its PDF"
-                 "Imported %s; attach a PDF with `citar-add-file-to-library'")
-               key)
-      key)))
-
-(defun my/source-import (text)
-  "Resolve TEXT to a resource, importing a paper into the bibliography.
-An arXiv reference brings its entry and PDF, a DOI its entry and an
-open-access PDF when Unpaywall knows one.  A URL stays a URL."
-  (let ((arxiv (my/source--arxiv-id text))
-        (doi (my/source--doi text)))
-    (cond (arxiv
-           (let ((id (replace-regexp-in-string "v[0-9]+\\'" "" arxiv)))
-             (cons 'citekey (my/source--import "eprint" id (concat "https://arxiv.org/bibtex/" id)
-                                               (lambda () (concat "https://arxiv.org/pdf/" id))))))
-          (doi
-           (cons 'citekey (my/source--import "doi" doi (concat "https://doi.org/" doi)
-                                             (lambda () (my/source--open-access-pdf doi)))))
-          ((my/source-url-p text) (cons 'url text)))))
-
-(defun my/source--read-reference (prompt)
-  "Read a URL, DOI or arXiv reference with PROMPT; M-n offers a copied one."
-  (let ((copied (string-trim (or (ignore-errors (current-kill 0 t)) ""))))
-    (string-trim
-     (read-from-minibuffer prompt nil nil nil nil
-                           (and (or (my/source-url-p copied) (my/source--doi copied)
-                                    (my/source--arxiv-id copied))
-                                copied)))))
-
-(defun my/source-add (text)
-  "Import the paper TEXT names, a DOI or an arXiv reference."
-  (interactive (list (my/source--read-reference "DOI or arXiv reference: ")))
-  (unless (eq (car-safe (my/source-import text)) 'citekey)
-    (user-error "Not a DOI or arXiv reference: %s" text)))
 
 (defun my/source-new-entry ()
   "Add a bibliography entry by hand: insert a template at the end of the file.
@@ -174,344 +88,161 @@ Fill the fields, then C-c C-c cleans the entry and generates its key."
   (unless (bolp) (insert "\n"))
   (call-interactively #'bibtex-entry))
 
-(defun my/source--file-citekey (file)
-  "Return the citekey whose library files include FILE, or nil."
-  (let ((library (citar-get-files)))
-    (seq-find (lambda (key) (seq-some (lambda (candidate) (file-equal-p candidate file))
-                                      (gethash key library)))
-              (hash-table-keys library))))
-
-(defun my/source--document-resource (file)
-  "Return the resource of the document FILE: its citekey, else the file."
-  (if-let* ((key (my/source--file-citekey file))) (cons 'citekey key) (cons 'file file)))
-
-(defun my/source-entry-resource ()
-  "Return the resource described by the Org entry at point, or nil."
-  (let ((key (org-entry-get nil "CITEKEY"))
-        (source (org-entry-get nil "SOURCE")))
-    (cond (key (cons 'citekey key))
-          (source (cons (if (my/source-url-p source) 'url 'file) source))
-          ((save-excursion
-             (org-back-to-heading t)
-             (let ((end (save-excursion (org-end-of-subtree t t))))
-               (when (re-search-forward org-link-any-re end t)
-                 (let ((url (or (match-string-no-properties 2) (match-string-no-properties 0))))
-                   (and (my/source-url-p url) (cons 'url url))))))))))
-
-(defun my/source-current-resource ()
-  "Return the resource of the current buffer.
-A page in EWW, a PDF, a queue item or agenda line, or a source note."
-  (cond ((derived-mode-p 'eww-mode) (cons 'url (eww-current-url)))
-        ((derived-mode-p 'pdf-view-mode) (my/source--document-resource buffer-file-name))
-        ((derived-mode-p 'org-agenda-mode)
-         (org-agenda-with-point-at-orig-entry nil (my/source-entry-resource)))
-        ((derived-mode-p 'org-mode)
-         (or (unless (org-before-first-heading-p) (my/source-entry-resource))
-             (org-with-wide-buffer (goto-char (point-min)) (my/source-entry-resource))))))
-
-(defun my/source--documents (resource)
-  "Return the document files of RESOURCE: a citekey's library files, or the file."
-  (pcase resource
-    (`(citekey . ,key) (gethash key (citar-get-files)))
-    (`(file . ,file) (list file))))
-
-(defun my/source-resource-title (resource)
-  "Return a title for RESOURCE from the bibliography, the page, or by asking."
-  (pcase resource
-    (`(citekey . ,key) (my/source-title (citar-get-entry key)))
-    (`(url . ,url) (or (and (derived-mode-p 'eww-mode) (org-string-nw-p (plist-get eww-data :title)))
-                       (read-string "Source title: " url)))
-    (`(file . ,file) (file-name-base file))))
-
-(defun my/source-open-resource (resource)
-  "Show RESOURCE: a PDF through Citar, a page in EWW, a file in Emacs."
-  (pcase resource
-    (`(citekey . ,key)
-     (if (gethash key (citar-get-files)) (citar-open-files key) (citar-open (list key))))
-    (`(url . ,url) (eww url))
-    (`(file . ,file) (find-file file))))
-
-;;;; Source notes
-
 (defun my/source-title (entry)
   "Return a single-line title for the Citar ENTRY."
   (string-clean-whitespace (or (citar-get-value "title" entry) (citar-get-value "=key=" entry))))
 
-(defun my/source-tag (entry)
-  "Describe the Citar ENTRY's publication type with a note tag."
-  (pcase (downcase (citar-get-value "=type=" entry))
-    ((or "book" "inbook" "incollection" "proceedings") "book")
-    ((or "phdthesis" "mastersthesis") "thesis")
-    ("techreport" "report")
-    (_ "paper")))
+(defun my/source--online-entry (url &optional fields)
+  "Draft an online bibliography entry for URL, fetching available metadata."
+  (let* ((tree (my/source--fetch url "text/html" (lambda () (libxml-parse-html-region (point) (point-max)))))
+         (meta (dom-by-tag tree 'meta)))
+    (cl-labels ((value (&rest names)
+                  (seq-some (lambda (name)
+                              (when-let* ((node (seq-find (lambda (node)
+                                                            (equal name (or (dom-attr node 'name) (dom-attr node 'property)))) meta)))
+                                (dom-attr node 'content))) names)))
+      (let ((fields (append fields
+			    `(("title" . ,(or (value "citation_title" "og:title")
+					      (org-string-nw-p (dom-inner-text (car (dom-by-tag tree 'title)))) url))
+			      ("author" . ,(value "citation_author" "author"))
+			      ("date" . ,(value "citation_publication_date" "article:published_time"))
+			      ("url" . ,url) ("urldate" . ,(format-time-string "%Y-%m-%d"))))))
+	(concat "@online{web-" (substring (secure-hash 'sha1 url) 0 12) ",\n"
+		(mapconcat (pcase-lambda (`(,name . ,value))
+					 (when (org-string-nw-p value)
+					   (format "  %s = {%s}," name (string-clean-whitespace value))))
+			   (seq-filter #'cdr fields) "\n") "\n}")))))
 
-(defun my/source-note-p (node)
-  "Whether NODE is a source note rather than a queue item, a heading."
-  (not (org-mem-entry-subtree-p node)))
+(defun my/source-import (text)
+  "Return TEXT's bibliography key, importing metadata without downloading files."
+  (let* ((arxiv (when-let* ((id (my/source--arxiv-id text))) (replace-regexp-in-string "v[0-9]+\\'" "" id)))
+         (doi (my/source--doi text))
+         (field (cond (arxiv "eprint") (doi "doi") (t "url")))
+         (value (or arxiv doi text))
+         (url (cond (arxiv (concat "https://arxiv.org/abs/" arxiv))
+                    (doi (concat "https://doi.org/" doi)) (t text))))
+    (unless (my/source-url-p url) (user-error "Enter a URL, DOI, or arXiv reference"))
+    (or (my/source--key-where field value)
+        (my/source--add-entry
+         (or (when (or arxiv doi)
+               (my/source--fetch (if arxiv (concat "https://arxiv.org/bibtex/" arxiv) url)
+                                 "application/x-bibtex" #'my/source--text))
+             (my/source--online-entry url (when (or arxiv doi) (list (cons field value)))))))))
+
+(defun my/source-add (text)
+  "Import bibliography metadata from TEXT without creating a note."
+  (interactive "sURL, DOI, or arXiv reference: ")
+  (message "Bibliography: %s" (my/source-import (string-trim text))))
 
 (defun my/source-notes (&optional keys)
-  "Return Citar's KEY-to-files map, restricted to KEYS when supplied."
-  (org-note-graph-ensure)
+  "Return Citar's key-to-files map from document metadata, optionally for KEYS."
   (let ((notes (make-hash-table :test #'equal)))
-    (dolist (node (org-note-graph-nodes) notes)
-      (when-let* (((my/source-note-p node))
-                  (key (org-mem-entry-property "CITEKEY" node))
-                  ((or (null keys) (member key keys))))
-        (push (org-mem-entry-file node) (gethash key notes))))))
+    (dolist (location (org-note-graph-objects (my/org-graph)) notes)
+      (when (eq (plist-get location :type) 'note)
+        (when-let* ((key (cdr (assoc "CITEKEY" (plist-get location :properties))))
+                    ((or (not keys) (member key keys))))
+          (push (plist-get location :file) (gethash key notes)))))))
 
-(defun my/source-note (resource)
-  "Return the note describing RESOURCE, or nil."
-  (org-note-graph-ensure)
-  (pcase-let ((`(,type . ,value) resource))
-    (seq-find (lambda (node)
-                (and (my/source-note-p node)
-                     (equal value (org-mem-entry-property (if (eq type 'citekey) "CITEKEY" "SOURCE") node))))
-              (org-note-graph-nodes))))
+(defun my/source-capture-target ()
+  "Select or import a reference, then position capture in its source note."
+  (let* ((text (unless my/source-capture-key
+                 (string-trim (read-from-minibuffer "URL, DOI, arXiv (empty selects bibliography): "
+                                                    nil nil nil nil (ignore-errors (current-kill 0 t))))))
+         (key (or my/source-capture-key (if (string-empty-p text) (citar-select-ref) (my/source-import text))))
+         (notes (gethash key (my/source-notes (list key))))
+         (file (if notes (if (cdr notes) (completing-read "Source note: " notes nil t) (car notes))
+                 (expand-file-name (concat (string-replace "/" "_" key) ".org") my/source-directory))))
+    (unless (or notes (file-in-directory-p file my/source-directory)) (user-error "Invalid bibliography key"))
+    (make-directory my/source-directory t)
+    (set-buffer (find-file-noselect file))
+    (widen) (goto-char (point-max))
+    (when (and (> (buffer-size) 0)
+               (not (equal key (save-excursion (goto-char (point-min)) (org-entry-get nil "CITEKEY")))))
+      (user-error "Existing source file has no matching CITEKEY: %s" file))
+    (org-capture-put :source-key key :source-new (= (point-min) (point-max)))))
 
-(defun my/source-write-note (resource &optional title)
-  "Create the note for RESOURCE with TITLE and return its node."
-  (pcase-let* ((`(,type . ,value) resource)
-               (entry (and (eq type 'citekey) (or (citar-get-entry value) (user-error "Unknown citekey %s" value))))
-               (title (or title (my/source-resource-title resource)))
-               (pdf (let ((files (my/source--documents resource))) (and (length= files 1) (car files))))
-               (org-note-graph-capture-directory my/source-directory)
-               (properties (append (if entry `(("CITEKEY" . ,value)) `(("SOURCE" . ,value)))
-                                   (when pdf `(("NOTER_DOCUMENT" . ,(file-relative-name pdf my/source-directory))))))
-               (node (org-note-graph-write-note title properties (list (if entry (my/source-tag entry) "web")))))
-    (when entry
-      (with-current-buffer (find-file-noselect (org-mem-entry-file node))
-        (org-with-wide-buffer (goto-char (point-max)) (insert (format "[cite:@%s]\n" value)))
-        (save-buffer)))
-    node))
+(defun my/source-capture-header ()
+  "Initialize a new source note with metadata and an ordinary reading tag."
+  (when (org-capture-get :source-new)
+    (let ((key (org-capture-get :source-key)))
+      (insert (format ":PROPERTIES:\n:ID: %s\n:CITEKEY: %s\n:END:\n#+title: %s\n#+filetags: :reading:\n\n[cite:@%s]\n\n"
+                      (org-id-new) key (my/source-title (citar-get-entry key)) key)))))
 
-(defun my/source-ensure-note (resource &optional title)
-  "Return the note for RESOURCE, creating it with TITLE when missing."
-  (or (my/source-note resource) (my/source-write-note resource title)))
+(defun my/source-capture (&optional key)
+  "Capture a source bookmark; KEY is supplied when called by Citar."
+  (interactive)
+  (let ((my/source-capture-key key)) (org-capture nil "s")))
+
+(defun my/source-capture-save ()
+  "Save the source note after successful capture, leaving aborts unsaved."
+  (unless org-note-abort
+    (with-current-buffer (marker-buffer org-capture-last-stored-marker)
+      (save-buffer)
+      (org-with-wide-buffer
+       (save-excursion
+         (goto-char (point-min))
+         (when-let* ((id (org-entry-get nil "ID"))) (org-id-add-location id buffer-file-name)))))))
 
 (defun my/source-associate (entry)
-  "Associate this Org document with bibliography ENTRY, saving nothing."
+  "Associate this file with bibliography ENTRY, leaving the buffer modified."
   (interactive (list (citar-get-entry (citar-select-ref))))
-  (unless (and (derived-mode-p 'org-mode) (buffer-file-name (buffer-base-buffer)))
-    (user-error "Use a visiting Org document"))
-  (barf-if-buffer-read-only)
-  (unless entry (user-error "No bibliography entry selected"))
+  (unless (and entry (derived-mode-p 'org-mode) buffer-file-name) (user-error "Use a visiting Org file"))
   (org-with-wide-buffer
-   (goto-char (point-min))
-   (let* ((key (citar-get-value "=key=" entry))
-          (current (unless (org-at-heading-p) (org-entry-get nil "CITEKEY")))
-          (other (seq-find (lambda (file) (not (file-equal-p file (buffer-file-name (buffer-base-buffer)))))
-                           (gethash key (my/source-notes (list key))))))
-     (when (and current (not (equal current key)))
-       (user-error "This document already describes %s" current))
-     (when other (user-error "Publication already has a note: %s" other))
-     (atomic-change-group
-       (when (org-at-heading-p) (insert "\n") (goto-char (point-min)))
-       (org-entry-put nil "CITEKEY" key)
-       (org-id-get-create)
-       (goto-char (point-min))
-       (org-note-graph-toggle-tag (my/source-tag entry))))))
+   (save-excursion
+     (goto-char (point-min))
+     (when (org-at-heading-p) (insert "\n") (goto-char (point-min)))
+     (org-entry-put nil "CITEKEY" (citar-get-value "=key=" entry)))))
 
-;;;; Reading queue
+(defun my/source-acquire (key)
+  "Fetch KEY's supported PDF lazily, using Citar's library placement."
+  (let* ((arxiv (citar-get-value "eprint" key))
+         (doi (citar-get-value "doi" key))
+         (url (cond ((org-string-nw-p arxiv) (concat "https://arxiv.org/pdf/" arxiv))
+                    ((org-string-nw-p doi) (my/source--open-access-pdf doi)))) file)
+    (when url
+      (funcall citar-add-file-function key
+               (list :extension "pdf" :write-file
+                     (lambda (destination overwrite)
+                       (url-copy-file url destination overwrite)
+                       (setq file destination)))))
+    file))
 
-(defun my/source--queue-map (function)
-  "Call FUNCTION at each open queue item and return its non-nil results."
-  (with-current-buffer (find-file-noselect my/source-queue-file)
-    (org-with-wide-buffer
-     (delq nil (org-map-entries function "/!TODO|NEXT" 'file)))))
-
-(defun my/source--queue-items ()
-  "Return (STATE . MARKER) for open queue items, in-progress ones first."
-  (sort (my/source--queue-map (lambda () (cons (org-get-todo-state) (point-marker))))
-        (lambda (a b) (and (equal (car a) "NEXT") (not (equal (car b) "NEXT"))))))
-
-(defun my/source--queue-item (resource)
-  "Return a marker at the queue item describing RESOURCE, or nil."
-  (car (my/source--queue-map (lambda () (and (equal (my/source-entry-resource) resource) (point-marker))))))
-
-(defun my/source--select-queue-item ()
-  "Choose an open queue item and return a marker at it."
-  (let* ((items (my/source--queue-items))
-         (candidates (mapcar (lambda (item)
-                               (cons (org-with-point-at (cdr item)
-                                       (format "%s %s" (car item) (org-get-heading t t t t)))
-                                     (cdr item)))
-                             items)))
-    (unless candidates (user-error "The reading queue is empty"))
-    (cdr (assoc (completing-read "Read: " candidates nil t) candidates))))
-
-(defun my/source--queue-item-at-point ()
-  "Return a marker at the queue item at point, selecting one elsewhere."
-  (cond ((derived-mode-p 'org-agenda-mode)
-         (or (org-get-at-bol 'org-marker) (user-error "No item here")))
-        ((and (derived-mode-p 'org-mode) (file-equal-p (or buffer-file-name "") my/source-queue-file)
-              (not (org-before-first-heading-p)))
-         (save-excursion (org-back-to-heading t) (point-marker)))
-        (t (my/source--select-queue-item))))
-
-(defun my/source-capture-resource ()
-  "Resolve the queue capture's source once: the EWW page or PDF being read,
-else a URL, DOI or arXiv reference read from the minibuffer, else an entry."
-  (or (org-capture-get :note-source)
-      (let ((resource
-             (or (with-current-buffer (org-capture-get :original-buffer)
-                   (and (derived-mode-p 'eww-mode 'pdf-view-mode) (my/source-current-resource)))
-                 (let ((text (my/source--read-reference
-                              "URL, DOI or arXiv reference (empty for a bibliography entry): ")))
-                   (if (string-empty-p text)
-                       (cons 'citekey (citar-select-ref))
-                     (or (condition-case err (my/source-import text)
-                           (error (user-error "Import failed: %s. Add the entry with C-c r b, then capture again"
-                                              (error-message-string err))))
-                         (user-error "Not a URL, DOI or arXiv reference: %s" text)))))))
-        (org-capture-put :note-source resource)
-        resource)))
-
-(defun my/source-capture-title ()
-  "Return the queue capture's title, for the template."
-  (my/source-resource-title (my/source-capture-resource)))
-
-(defun my/source-capture-properties ()
-  "Return the queue capture's property line, for the template."
-  (pcase (my/source-capture-resource)
-    (`(citekey . ,key) (format ":CITEKEY: %s" key))
-    (`(,_ . ,value) (format ":SOURCE: %s" value))))
-
-(defun my/source-noter-page (resource)
-  "Return the page org-noter last saved in RESOURCE's note, or nil."
-  (when-let* ((node (my/source-note resource))
-              ;; The buffer, since a running session saves the page there first.
-              ;; org-noter's start location, at the note's top.
-              (value (with-current-buffer (find-file-noselect (org-mem-entry-file node))
-                       (org-with-wide-buffer (goto-char (point-min)) (org-entry-get nil "NOTER_PAGE"))))
-              (location (ignore-errors (car (read-from-string value)))))
-    (seq-find #'integerp (list location (car-safe location)))))
-
-(defun my/source-start (&optional create-note)
-  "Start or continue reading the queue item at point: mark it NEXT and open its
-source, a PDF not open yet at the page org-noter last saved in its note.
-With CREATE-NOTE, open or create its note as well."
-  (interactive "P")
-  (let* ((marker (my/source--queue-item-at-point))
-         (resource (org-with-point-at marker
-                     (or (my/source-entry-resource) (user-error "This item names no source"))))
-         (title (org-with-point-at marker (org-get-heading t t t t)))
-         (open (seq-some #'find-buffer-visiting (my/source--documents resource))))
-    (org-with-point-at marker (org-todo "NEXT"))
-    (my/source-open-resource resource)
-    ;; An open PDF already shows where reading stopped.
-    (when-let* (((not open))
-                ((derived-mode-p 'pdf-view-mode))
-                (page (my/source-noter-page resource)))
-      (pdf-view-goto-page page))
-    (when-let* ((node (if create-note (my/source-ensure-note resource title) (my/source-note resource))))
-      (display-buffer (find-file-noselect (org-mem-entry-file node))))))
-
-(defun my/source-finish ()
-  "Finish the source being read: mark its queue item DONE and record a verdict.
-The verdict goes into the source note, or onto the queue item without one."
+(defun my/source-show-document ()
+  "Open this source note's document alongside the note in the current frame."
   (interactive)
-  (let* ((resource (or (my/source-current-resource)
-                       (org-with-point-at (my/source--select-queue-item) (my/source-entry-resource))))
-         (marker (or (my/source--queue-item resource) (user-error "No open queue item for this source")))
-         (verdict (string-trim (read-string "Verdict (empty to skip): ")))
-         (node (my/source-note resource)))
-    (org-with-point-at marker (org-todo "DONE"))
-    (unless (string-empty-p verdict)
-      (if node
-          (with-current-buffer (find-file-noselect (org-mem-entry-file node))
-            (org-with-wide-buffer
-             (goto-char (point-max))
-             (unless (bolp) (insert "\n"))
-             (insert "\nVerdict: " verdict "\n"))
-            (save-buffer))
-        (org-with-point-at marker
-          (org-end-of-meta-data t)
-          (insert "Verdict: " verdict "\n"))))
-    (with-current-buffer (marker-buffer marker) (save-buffer))
-    (message "Finished %s" (org-with-point-at marker (org-get-heading t t t t)))))
+  (unless (and (derived-mode-p 'org-mode) buffer-file-name) (user-error "Use a source note"))
+  (let* ((note (current-buffer))
+         (key (org-with-wide-buffer (save-excursion (goto-char (point-min)) (org-entry-get nil "CITEKEY"))))
+         (_ (unless key (user-error "This note has no CITEKEY")))
+         (files (gethash key (citar-get-files (list key))))
+         (file (if files (if (cdr files) (completing-read "Document: " files nil t) (car files))
+                 (condition-case err (my/source-acquire key)
+                   (error (message "Document retrieval: %s" (error-message-string err)) nil))))
+         (url (or (org-string-nw-p (citar-get-value "url" key))
+                  (when-let* ((doi (org-string-nw-p (citar-get-value "doi" key)))) (concat "https://doi.org/" doi))
+                  (when-let* ((id (org-string-nw-p (citar-get-value "eprint" key)))) (concat "https://arxiv.org/abs/" id)))))
+    (unless (or file url) (user-error "No document or URL; attach one with citar-add-file-to-library"))
+    (display-buffer note '((display-buffer-reuse-window display-buffer-pop-up-window) (inhibit-same-window . t)))
+    (if file (find-file file) (eww url))))
 
-;;;; Noter
-
-(defun my/source-noter-notes (document)
-  "Return the source note annotating DOCUMENT, for org-noter's notes lookup.
-Noter otherwise only considers notes named after the document."
-  (when-let* ((node (my/source-note (my/source--document-resource (expand-file-name document)))))
-    (org-mem-entry-file node)))
-
-(defun my/source-noter-prepare (_arg document)
-  "Give DOCUMENT a source note naming it, before org-noter looks for notes.
-For `org-noter-create-session-from-document-hook'; returns nil, so org-noter
-goes on and finds the note instead of creating a file beside the document."
-  (let* ((document (expand-file-name document))
-         (node (my/source-ensure-note (my/source--document-resource document))))
-    (with-current-buffer (find-file-noselect (org-mem-entry-file node))
-      (org-with-wide-buffer
-       (goto-char (point-min))
-       (unless (org-entry-get nil "NOTER_DOCUMENT")
-         (org-entry-put nil "NOTER_DOCUMENT" (file-relative-name document))
-         (save-buffer))))
-    nil))
-
-;;;; Capture into the source note
-
-(defun my/source-note-target ()
-  "Position capture at the end of the current source's note, creating it if needed."
-  (let* ((origin (org-capture-get :original-buffer))
-         (resource (with-current-buffer origin
-                     (or (my/source-current-resource) (user-error "No source in this buffer"))))
-         (title (with-current-buffer origin
-                  (or (when-let* ((marker (my/source--queue-item resource)))
-                        (org-with-point-at marker (org-get-heading t t t t)))
-                      (my/source-resource-title resource))))
-         (node (my/source-ensure-note resource title)))
-    (set-buffer (find-file-noselect (org-mem-entry-file node)))
-    (widen)
-    (goto-char (point-max))))
-
-(defun my/source-location ()
-  "Return where a captured thought or quote comes from: the PDF's page, else
-the link to the origin, for the capture templates."
-  (with-current-buffer (org-capture-get :original-buffer)
-    (if (derived-mode-p 'pdf-view-mode)
-        ;; pdf-view keeps the page in image-mode's window state.
-        (format "p. %d" (image-mode-window-get 'page))
-      (org-capture-get :annotation))))
-
-(defun my/source-selection ()
-  "Return the text selected in the capture's origin, for quote templates."
-  (let ((origin (org-capture-get :original-buffer)))
-    (string-trim
-     (or (with-current-buffer origin
-           (when (and (derived-mode-p 'pdf-view-mode) (pdf-view-active-region-p))
-             (string-join (pdf-view-active-region-text) " ")))
-         (org-capture-get :initial)
-         ""))))
-
-;;;; Citar notes source
+(defun my/source-queue ()
+  "Find a reading-tagged note, independently of bibliography and acquisition."
+  (interactive)
+  (org-note-graph-query (my/org-graph) "location[type=note] & #reading"))
 
 (defun my/source-has-notes ()
-  "Return a Citar predicate using one snapshot of the note graph."
-  (let ((notes (my/source-notes)))
-    (lambda (key) (gethash key notes))))
-
-(defun my/source-open (file)
-  "Open the source note FILE through the note graph."
-  (org-note-graph-open (or (org-note-graph-file-node file) (user-error "Note is not indexed: %s" file))))
+  "Return Citar's predicate using one document snapshot."
+  (let ((notes (my/source-notes))) (lambda (key) (gethash key notes))))
 
 (defun my/source-create-note (key entry)
-  "Create and open the note for KEY, described by the Citar ENTRY."
-  (unless entry (user-error "No bibliography entry for %s" key))
-  (org-note-graph-open (my/source-ensure-note (cons 'citekey key))))
+  "Capture a source note for KEY, described by ENTRY."
+  (unless entry (user-error "Unknown bibliography entry %s" key))
+  (my/source-capture key))
 
 (citar-register-notes-source
- 'org-note-graph
- (list :name "Source notes"
-       :category 'file
-       :items #'my/source-notes
-       :hasitems #'my/source-has-notes
-       :open #'my/source-open
-       :create #'my/source-create-note
+ 'source-notes
+ (list :name "Source notes" :category 'file :items #'my/source-notes :hasitems #'my/source-has-notes
+       :open (lambda (file) (pop-to-buffer (find-file-noselect file))) :create #'my/source-create-note
        :transform #'file-name-nondirectory))
 
 (provide 'my-sources)
-;;; my-sources.el ends here

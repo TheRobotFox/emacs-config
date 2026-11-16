@@ -17,10 +17,8 @@
 (require 'seq)
 (require 'subr-x)
 
-(declare-function org-note-graph-ensure "org-note-graph")
-(declare-function org-note-graph-task-files "org-note-graph")
-(declare-function org-note-graph-goto "org-note-graph" (entry))
-(declare-function org-note-graph-read "org-note-graph-ui" (prompt &optional nodes allow-new))
+(declare-function org-note-graph-query-compile "org-note-graph-query" (text))
+(declare-function my/org-graph "my-notes" ())
 
 (defgroup my/tasks nil "Personal project and task workflow." :group 'org)
 (defcustom my/project-note-file "README.org"
@@ -104,11 +102,6 @@ When NODE is non-nil, assign a file ID for stable links."
   (beginning-of-line)
   (unless (org-at-heading-p) (forward-line -1)))
 
-(defun my/task--entry-heading ()
-  "Position at the current heading, or at the Tasks heading before the first one."
-  (widen)
-  (if (org-before-first-heading-p) (my/task--tasks-heading) (org-back-to-heading t)))
-
 (defun my/task--remember-root (root)
   "Remember ROOT so its tasks remain discoverable after restarting Emacs."
   (project-remember-project (cons 'transient root)))
@@ -118,45 +111,19 @@ When NODE is non-nil, assign a file ID for stable links."
   (set-buffer (my/project-note-buffer root))
   (my/task--tasks-heading))
 
-(defun my/task--origin ()
-  "Return the live buffer that started the current capture, or nil."
-  (let ((origin (org-capture-get :original-buffer)))
-    (and (buffer-live-p origin) origin)))
-
 (defun my/task-inbox-file ()
   "Return the notes inbox."
   (expand-file-name "inbox.org" my/notes-directory))
-
-(defun my/task-inbox-target ()
-  "Position capture in the notes inbox."
-  (set-buffer (my/task--prepare-file (my/task-inbox-file) "Inbox" t))
-  (my/task--tasks-heading))
-
-(defun my/task-note-target ()
-  "Capture under the originating note's heading, else in a picked note."
-  (let ((origin (my/task--origin)))
-    (if (and origin (with-current-buffer origin (my/task--note-file-p)))
-        (set-buffer origin)
-      (org-note-graph-goto (org-note-graph-read "Task in note: ")))
-    (my/task--entry-heading)))
-
-(defun my/task-context-target ()
-  "Capture in the project, current note, or inbox, in that order."
-  (let* ((origin (my/task--origin))
-         (root (when origin (with-current-buffer origin (my/task-project-root)))))
-    (cond (root (my/task--project-target root))
-          ((and origin (with-current-buffer origin (my/task--note-file-p)))
-           (my/task-note-target))
-          (t (my/task-inbox-target)))))
 
 (defun my/project-task-capture ()
   "Capture a task under Tasks in the current or selected project's note."
   (interactive)
   (let* ((root (my/task-project-root t))
+         (file (buffer-file-name (my/project-note-buffer root)))
          (org-capture-templates
           `(("p" "Project task" entry
-             (function ,(lambda () (my/task--project-target root)))
-             "* TODO %?\n%a\n%i\n" :empty-lines 1))))
+		 (file+headline ,file "Tasks")
+		 "* TODO %?\n%a\n%i\n" :empty-lines 1))))
     (org-capture nil "p")))
 
 (defun my/project-tasks ()
@@ -187,8 +154,8 @@ When NODE is non-nil, assign a file ID for stable links."
 (defun my/project-notes ()
   "Return the existing notes of the known local projects."
   (cl-loop for root in (project-known-project-roots)
-           for note = (and (not (file-remote-p root)) (file-directory-p root) (my/project-note-path root))
-           when (and note (file-exists-p note)) collect note))
+        for note = (and (not (file-remote-p root)) (file-directory-p root) (my/project-note-path root))
+        when (and note (file-exists-p note)) collect note))
 
 (defun my/project-note-index ()
   "Let org-id, and so the note index, know the project note in this buffer."
@@ -196,8 +163,10 @@ When NODE is non-nil, assign a file ID for stable links."
 
 (defun my/task-agenda-files ()
   "Return the note graph's task files, the extra files and project notes."
-  (org-note-graph-ensure)
-  (let ((files (append (org-note-graph-task-files) my/task-extra-files (my/project-notes))))
+  (require 'org-note-graph-query)
+  (let ((files (append (mapcar (lambda (row) (plist-get (car row) :file))
+                               (funcall (org-note-graph-query-compile "location[todo]") (my/org-graph) nil))
+                       my/task-extra-files (my/project-notes))))
     (delete-dups
      (mapcar #'file-truename
              (seq-filter #'my/task--available-file-p (mapcar #'expand-file-name files))))))

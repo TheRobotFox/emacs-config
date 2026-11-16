@@ -15,6 +15,7 @@
 	kill-region
 	kill-sentence
 	kill-visual-line
+	mark-sexp
 	org-beginning-of-line
 	org-ctrl-c-ctrl-c
 	org-cycle
